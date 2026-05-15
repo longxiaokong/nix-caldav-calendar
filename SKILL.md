@@ -6,12 +6,15 @@ metadata: {"clawdbot":{"emoji":"📅","os":["linux"],"requires":{"bins":["caldav
 
 # CalDAV Calendar + Tasks
 
-Use `caldav-calendar` for non-interactive JSON automation.
+Use `caldav-calendar` for non-interactive JSON automation. Prefer the
+`direct-caldav` backend, which uses `python-caldav` to talk to Nextcloud
+directly.
 
 - Calendar events are `VEVENT`.
 - Tasks/todos are `VTODO`.
-- Local `.ics` files live in configured vdir directories.
-- `vdirsyncer` syncs local vdirs with Nextcloud or another CalDAV provider.
+- In direct mode, the CLI reads and writes remote CalDAV collections directly.
+- In legacy vdir mode, local `.ics` files live in configured vdir directories
+  and `vdirsyncer` syncs them.
 - `khal` and `todoman` are available only as manual/debug passthrough tools.
 
 ## Agent Rules
@@ -52,12 +55,15 @@ Example:
 
 ```json
 {
+  "backend": "direct-caldav",
   "timezone": "Asia/Shanghai",
-  "event_calendars": {
-    "personal": "/home/user/.local/share/caldav/personal-calendar"
+  "base_url": "https://cloud.example.com/remote.php/dav/calendars/USERNAME/",
+  "username": "USERNAME",
+  "event_collections": {
+    "personal": "personal"
   },
-  "task_lists": {
-    "Inbox": "/home/user/.local/share/caldav/tasks-inbox"
+  "task_collections": {
+    "Inbox": "tasks"
   },
   "default_event_calendar": "personal",
   "default_task_list": "Inbox"
@@ -79,8 +85,18 @@ configured timezone, and whether vdir directories exist.
 caldav-calendar sync --json
 ```
 
-This runs `vdirsyncer sync` and returns structured JSON. Use it before reading
-and after confirmed writes.
+In direct mode this returns a JSON no-op because writes go directly to the
+server. In legacy vdir mode this runs `vdirsyncer sync`.
+
+## Discover
+
+```bash
+caldav-calendar caldav discover --json
+```
+
+Use this to classify collections. Only use `VEVENT` collections for events and
+`VTODO` collections for tasks. Do not write to contact birthdays or other
+generated/special collections.
 
 ## Events
 

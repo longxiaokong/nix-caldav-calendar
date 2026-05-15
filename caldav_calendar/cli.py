@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -22,6 +23,7 @@ from .ics_task import build_task, new_uid as new_task_uid, task_to_bytes
 from .models import EventCreateInput, TaskCreateInput, load_json_file
 from .output import emit, emit_error, fail_unexpected
 from .sync import run_sync
+from . import remote
 from .vdir import (
     event_overlaps,
     event_summary,
@@ -71,6 +73,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "operation": "doctor",
         "env": {name: bool(value) for name, value in env.items()},
         "tools": {name: bool(shutil.which(name)) for name in ["vdirsyncer", "khal", "todo"]},
+        "python": {"caldav": importlib.util.find_spec("caldav") is not None},
         "config": {},
     }
     try:
@@ -78,6 +81,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         payload["config"] = {
             "config_file": str(config.config_file) if config.config_file else None,
             "timezone": config.timezone,
+            "backend": config.backend,
             "timezone_configured": bool(config.timezone),
             "event_dirs": {
                 name: {"path": str(path), "exists": path.exists()}
@@ -87,6 +91,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 name: {"path": str(path), "exists": path.exists()}
                 for name, path in config.task_lists.items()
             },
+            "event_collections": config.event_collections,
+            "task_collections": config.task_collections,
         }
     except CaldavCalendarError as exc:
         payload["ok"] = False
@@ -95,15 +101,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
-    load_config()
+    config = load_config()
+    if config.backend == "direct-caldav":
+        return emit({"ok": True, "operation": "sync", "backend": "direct-caldav", "sync": {"backend": "direct-caldav", "skipped": True, "reason": "direct CalDAV backend writes to remote immediately"}})
     result = run_sync()
     return emit({"ok": True, "operation": "sync", "sync": result})
+
+
+def cmd_caldav_discover(args: argparse.Namespace) -> int:
+    config = load_config()
+    return emit({"ok": True, "operation": "caldav.discover", "collections": remote.discover(config)})
 
 
 def cmd_event_list(args: argparse.Namespace) -> int:
     config = load_config()
     start = date.fromisoformat(args.from_date)
     end = date.fromisoformat(args.to_date)
+    if config.backend == "direct-caldav":
+        return emit({"ok": True, "operation": "event.list", "items": remote.list_events(config, start, end)})
     items = []
     for calendar_name, directory in config.event_calendars.items():
         for item in iter_components(directory, "VEVENT"):
@@ -114,6 +129,8 @@ def cmd_event_list(args: argparse.Namespace) -> int:
 
 def cmd_event_get(args: argparse.Namespace) -> int:
     config = load_config()
+    if config.backend == "direct-caldav":
+        return emit({"ok": True, "operation": "event.get", "item": remote.get_event(config, args.uid)})
     item = find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid)
     return emit({"ok": True, "operation": "event.get", "item": event_summary(item)})
 
@@ -141,9 +158,14 @@ def cmd_event_create(args: argparse.Namespace) -> int:
                 "ical": _vcalendar_text(calendar),
             }
         )
-    directory = config.event_dir(input_data.calendar)
-    path = write_new_ics(directory, uid, event_to_bytes(calendar))
-    sync_result = run_sync()
+    if config.backend == "direct-caldav":
+        remote.create_event(config, input_data.calendar, _vcalendar_text(calendar))
+        sync_result = {"backend": "direct-caldav", "skipped": True, "reason": "created directly on CalDAV server"}
+        path = None
+    else:
+        directory = config.event_dir(input_data.calendar)
+        path = write_new_ics(directory, uid, event_to_bytes(calendar))
+        sync_result = run_sync()
     _audit(config, "event.create", {"uid": uid, "title": input_data.title, "dry_run": False, "result": "ok"})
     return emit(
         {
@@ -151,7 +173,7 @@ def cmd_event_create(args: argparse.Namespace) -> int:
             "operation": "event.create",
             "dry_run": False,
             "uid": uid,
-            "path": str(path),
+            "path": str(path) if path else None,
             "item": item,
             "sync": sync_result,
         }
@@ -160,6 +182,8 @@ def cmd_event_create(args: argparse.Namespace) -> int:
 
 def cmd_task_list(args: argparse.Namespace) -> int:
     config = load_config()
+    if config.backend == "direct-caldav":
+        return emit({"ok": True, "operation": "task.list", "items": remote.list_tasks(config, args.status)})
     items = []
     for list_name, directory in config.task_lists.items():
         for item in iter_components(directory, "VTODO"):
@@ -172,6 +196,8 @@ def cmd_task_list(args: argparse.Namespace) -> int:
 
 def cmd_task_get(args: argparse.Namespace) -> int:
     config = load_config()
+    if config.backend == "direct-caldav":
+        return emit({"ok": True, "operation": "task.get", "item": remote.get_task(config, args.uid)})
     item = find_by_uid(list(config.task_lists.values()), "VTODO", args.uid)
     return emit({"ok": True, "operation": "task.get", "item": task_summary(item)})
 
@@ -199,9 +225,14 @@ def cmd_task_create(args: argparse.Namespace) -> int:
                 "ical": _vcalendar_text(calendar),
             }
         )
-    directory = config.task_dir(input_data.list_name)
-    path = write_new_ics(directory, uid, task_to_bytes(calendar))
-    sync_result = run_sync()
+    if config.backend == "direct-caldav":
+        remote.create_task(config, input_data.list_name, _vcalendar_text(calendar))
+        sync_result = {"backend": "direct-caldav", "skipped": True, "reason": "created directly on CalDAV server"}
+        path = None
+    else:
+        directory = config.task_dir(input_data.list_name)
+        path = write_new_ics(directory, uid, task_to_bytes(calendar))
+        sync_result = run_sync()
     _audit(config, "task.create", {"uid": uid, "title": input_data.title, "dry_run": False, "result": "ok"})
     return emit(
         {
@@ -209,7 +240,7 @@ def cmd_task_create(args: argparse.Namespace) -> int:
             "operation": "task.create",
             "dry_run": False,
             "uid": uid,
-            "path": str(path),
+            "path": str(path) if path else None,
             "item": item,
             "sync": sync_result,
         }
@@ -219,6 +250,30 @@ def cmd_task_create(args: argparse.Namespace) -> int:
 def cmd_task_done(args: argparse.Namespace) -> int:
     dry_run = _require_mode(args)
     config = load_config()
+    if config.backend == "direct-caldav":
+        before = remote.get_task(config, args.uid)
+        if dry_run:
+            return emit(
+                {
+                    "ok": True,
+                    "operation": "task.done",
+                    "dry_run": True,
+                    "would_mark_done": before,
+                }
+            )
+        updated = remote.complete_task(config, args.uid)
+        sync_result = {"backend": "direct-caldav", "skipped": True, "reason": "updated directly on CalDAV server"}
+        _audit(config, "task.done", {"uid": args.uid, "title": updated.get("title", ""), "dry_run": False, "result": "ok"})
+        return emit(
+            {
+                "ok": True,
+                "operation": "task.done",
+                "dry_run": False,
+                "uid": args.uid,
+                "item": updated,
+                "sync": sync_result,
+            }
+        )
     item = find_by_uid(list(config.task_lists.values()), "VTODO", args.uid)
     before = task_summary(item)
     if dry_run:
@@ -317,6 +372,12 @@ def build_parser() -> argparse.ArgumentParser:
     task_done.add_argument("--dry-run", action="store_true")
     task_done.add_argument("--confirm", action="store_true")
     task_done.set_defaults(func=cmd_task_done)
+
+    caldav_parser = sub.add_parser("caldav")
+    caldav_sub = caldav_parser.add_subparsers(dest="caldav_command", required=True, parser_class=JsonArgumentParser)
+    caldav_discover = caldav_sub.add_parser("discover")
+    caldav_discover.add_argument("--json", action="store_true")
+    caldav_discover.set_defaults(func=cmd_caldav_discover)
     return parser
 
 

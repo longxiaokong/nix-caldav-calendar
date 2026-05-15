@@ -9,11 +9,12 @@ Use `caldav-calendar`.
 
 ## Runtime model
 
-Agent automation uses the Python CLI:
+Agent automation uses the Python CLI. Prefer `backend = "direct-caldav"`:
 
-- `VEVENT` calendar events are generated/read directly as `.ics` files.
-- `VTODO` tasks are generated/read directly as `.ics` files.
-- Local vdir directories are synced with Nextcloud or another provider through
+- `VEVENT` calendar events are read/written through `python-caldav`.
+- `VTODO` tasks are read/written through `python-caldav`.
+- `caldav discover --json` classifies remote collections by supported component.
+- Legacy `backend = "vdir"` remains available for local `.ics` files and
   `vdirsyncer sync`.
 - `khal` and `todoman` remain installed for human/manual debugging only.
 
@@ -45,9 +46,10 @@ customPlugins = [
         CALDAV_CALENDAR_DEFAULT_TIMEZONE = "Asia/Shanghai";
       };
       settings = {
+        backend = "direct-caldav";
         provider = "nextcloud";
-        baseUrl = "https://cloud.example.com";
-        username = "user@example.com";
+        base_url = "https://cloud.example.com/remote.php/dav/calendars/USERNAME/";
+        username = "USERNAME";
         default_event_calendar = "personal";
         default_task_list = "Inbox";
       };
@@ -70,12 +72,15 @@ Example:
 
 ```json
 {
+  "backend": "direct-caldav",
   "timezone": "Asia/Shanghai",
-  "event_calendars": {
-    "personal": "/home/user/.local/share/caldav/personal-calendar"
+  "base_url": "https://cloud.example.com/remote.php/dav/calendars/USERNAME/",
+  "username": "USERNAME",
+  "event_collections": {
+    "personal": "personal"
   },
-  "task_lists": {
-    "Inbox": "/home/user/.local/share/caldav/tasks-inbox"
+  "task_collections": {
+    "Inbox": "tasks"
   },
   "default_event_calendar": "personal",
   "default_task_list": "Inbox"
@@ -87,6 +92,7 @@ Example:
 All agent-facing commands are non-interactive and emit JSON:
 
 - `caldav-calendar doctor --json`
+- `caldav-calendar caldav discover --json`
 - `caldav-calendar sync --json`
 - `caldav-calendar event list --from YYYY-MM-DD --to YYYY-MM-DD --json`
 - `caldav-calendar event get --uid UID --json`

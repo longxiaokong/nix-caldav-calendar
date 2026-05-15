@@ -22,7 +22,18 @@
       packages = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
-          pythonEnv = pkgs.python3.withPackages (ps: [
+          python = pkgs.python3.override {
+            packageOverrides = final: prev: {
+              niquests = prev.niquests.overridePythonAttrs (_old: {
+                doCheck = false;
+              });
+              caldav = prev.caldav.overridePythonAttrs (_old: {
+                doCheck = false;
+              });
+            };
+          };
+          pythonEnv = python.withPackages (ps: [
+            ps.caldav
             ps.icalendar
           ]);
         in
@@ -73,7 +84,18 @@
       devShells = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
-          pythonEnv = pkgs.python3.withPackages (ps: [
+          python = pkgs.python3.override {
+            packageOverrides = final: prev: {
+              niquests = prev.niquests.overridePythonAttrs (_old: {
+                doCheck = false;
+              });
+              caldav = prev.caldav.overridePythonAttrs (_old: {
+                doCheck = false;
+              });
+            };
+          };
+          pythonEnv = python.withPackages (ps: [
+            ps.caldav
             ps.icalendar
             ps.pytest
           ]);

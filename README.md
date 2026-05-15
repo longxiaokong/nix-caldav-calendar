@@ -2,13 +2,15 @@
 
 Agent-friendly CalDAV Calendar + VTODO Tasks skill for Nix/OpenClaw.
 
-This repository provides a stable `caldav-calendar` CLI. The agent-facing path
-is a Python JSON CLI that reads and writes local iCalendar `.ics` files:
+The recommended backend is now `direct-caldav`, powered by `python-caldav`.
+It talks to Nextcloud CalDAV directly instead of writing to local collection
+directories and relying on `vdirsyncer` to upload them.
 
 - calendar events are `VEVENT`
 - tasks/todos are `VTODO`
-- local vdir directories are synced with Nextcloud through `vdirsyncer`
-- `khal` and `todoman` remain available as manual/debug passthrough tools
+- `caldav discover --json` classifies remote collections by supported component
+- `khal`, `todoman`, and `vdirsyncer` remain available as manual/debug tools
+- the older `backend = "vdir"` local `.ics` flow remains available as a fallback
 
 No credentials, passwords, app tokens, or OAuth secrets are stored in the Nix
 store.
@@ -19,13 +21,13 @@ This branch is an MVP focused on non-interactive automation:
 
 - JSON output for agent-facing commands
 - dry-run/confirm safety for writes
-- VEVENT and VTODO generation
-- local vdir read/write
-- `vdirsyncer sync` after confirmed writes
-- tests that use temporary local vdirs and do not require a real Nextcloud server
+- direct CalDAV create/list/get/done flows through `python-caldav`
+- remote collection discovery and classification
+- legacy local vdir read/write still available with `backend = "vdir"`
+- tests that use temporary local vdirs or mocks and do not require a real Nextcloud server
 
-Advanced editing, deletion, recurrence, attendees, alarms, and provider-specific
-config generation are intentionally out of scope for the first MVP.
+Advanced editing, deletion, recurrence, attendees, alarms, and full provider
+config generation are intentionally out of scope for this MVP.
 
 ## Nix Contract
 
@@ -75,9 +77,10 @@ Example:
             CALDAV_CALENDAR_DEFAULT_TIMEZONE = "Asia/Shanghai";
           };
           settings = {
+            backend = "direct-caldav";
             provider = "nextcloud";
-            baseUrl = "https://cloud.example.com";
-            username = "user@example.com";
+            base_url = "https://cloud.example.com/remote.php/dav/calendars/USERNAME/";
+            username = "USERNAME";
             default_event_calendar = "personal";
             default_task_list = "Inbox";
           };
@@ -88,10 +91,6 @@ Example:
 }
 ```
 
-`config.settings` is Nix-native typed config. nix-openclaw may render it to
-`config.json`, but this CLI needs a concrete Python config file with vdir paths,
-described below.
-
 ## Environment Variables
 
 - `CALDAV_CALENDAR_CONFIG_DIR`: directory containing `caldav-calendar.json` or
@@ -99,39 +98,68 @@ described below.
 - `CALDAV_CALENDAR_AUTH_FILE`: runtime secret file path. This should point to
   something like `/run/agenix/caldav-calendar-auth` or
   `/run/secrets/caldav-calendar-auth`.
-- `CALDAV_CALENDAR_DATA_DIR`: local data directory for vdirs and
-  `audit.log.jsonl`.
+- `CALDAV_CALENDAR_DATA_DIR`: local data directory for `audit.log.jsonl` and
+  legacy vdir mode state.
 - `CALDAV_CALENDAR_DEFAULT_TIMEZONE`: default timezone, for example
   `Asia/Shanghai`.
 
-The CalDAV password/app token should be referenced by `vdirsyncer` at runtime:
-
-```ini
-password.fetch = ["command", "sh", "-c", "cat \"$CALDAV_CALENDAR_AUTH_FILE\""]
-```
-
-## Python CLI Config
+## Direct CalDAV Config
 
 Create `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`:
 
 ```json
 {
+  "backend": "direct-caldav",
   "timezone": "Asia/Shanghai",
-  "event_calendars": {
-    "personal": "/home/user/.local/share/caldav/personal-calendar"
+  "base_url": "https://cloud.example.com/remote.php/dav/calendars/USERNAME/",
+  "username": "USERNAME",
+  "event_collections": {
+    "personal": "personal"
   },
-  "task_lists": {
-    "Inbox": "/home/user/.local/share/caldav/tasks-inbox"
+  "task_collections": {
+    "Inbox": "tasks"
   },
   "default_event_calendar": "personal",
   "default_task_list": "Inbox"
 }
 ```
 
-The CLI also accepts `$CALDAV_CALENDAR_CONFIG_DIR/config.json`, which is useful
-when the host renders typed settings to that filename.
+The values inside `event_collections` and `task_collections` may be collection
+slugs, display names, or full collection URLs. Use discovery first to find the
+right values:
 
-Relative vdir paths are resolved under `CALDAV_CALENDAR_DATA_DIR`.
+```sh
+caldav-calendar caldav discover --json
+```
+
+Use only collections that advertise the matching component:
+
+- `VEVENT` collections are valid event calendars
+- `VTODO` collections are valid task lists
+- generated collections such as contact birthdays should not be agent write targets
+
+## Legacy vdir Config
+
+The previous vdirsyncer-backed mode is still available:
+
+```json
+{
+  "backend": "vdir",
+  "timezone": "Asia/Shanghai",
+  "event_calendars": {
+    "personal": "/home/user/.local/share/caldav/personal-calendar/personal"
+  },
+  "task_lists": {
+    "Inbox": "/home/user/.local/share/caldav/tasks-inbox/tasks"
+  },
+  "default_event_calendar": "personal",
+  "default_task_list": "Inbox"
+}
+```
+
+In vdir mode, confirmed writes create local `.ics` files and then run
+`vdirsyncer sync`. This mode requires the JSON paths to point to the actual
+collection subdirectories, not the storage root.
 
 ## Agent Commands
 
@@ -143,8 +171,16 @@ All agent-facing commands are non-interactive and emit JSON.
 caldav-calendar doctor --json
 ```
 
-Checks env presence, vdir directory existence, tool availability, config file,
-and default timezone.
+Checks env presence, tool availability, config file, backend, and timezone.
+
+### Discover
+
+```sh
+caldav-calendar caldav discover --json
+```
+
+Lists remote collections with slug, display name, href, and supported CalDAV
+components. Use this to choose event/task collections safely.
 
 ### Sync
 
@@ -152,7 +188,8 @@ and default timezone.
 caldav-calendar sync --json
 ```
 
-Runs `vdirsyncer sync`. Confirmed writes automatically run sync afterward.
+In `direct-caldav` mode this is a JSON no-op because writes go directly to the
+remote server. In `vdir` mode it runs `vdirsyncer sync`.
 
 ### Events
 
@@ -177,9 +214,6 @@ Event input:
   "tags": ["summer-camp", "study"]
 }
 ```
-
-Generated events include `VCALENDAR`, `VERSION:2.0`, `PRODID`, `VEVENT`,
-`UID`, `DTSTAMP`, `DTSTART`, `DTEND`, `SUMMARY`, and `DESCRIPTION`.
 
 ### Tasks
 
@@ -208,21 +242,15 @@ Task input:
 }
 ```
 
-Generated tasks include `VCALENDAR`, `VERSION:2.0`, `PRODID`, `VTODO`, `UID`,
-`DTSTAMP`, `SUMMARY`, `DUE`, `STATUS:NEEDS-ACTION`, `PRIORITY`, and
-`DESCRIPTION`.
-
 ## Safety Rules
 
 - Read-only commands may run directly.
 - Write commands require exactly one of `--dry-run` or `--confirm`.
 - Without either flag, the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
-- `--dry-run` validates and returns the item that would be written; it writes no
-  files and does not sync.
-- `--confirm` writes the `.ics` file or update, runs `vdirsyncer sync`, and
-  returns structured JSON.
+- `--dry-run` validates and returns the item that would be written.
+- `--confirm` performs the actual write.
 - Update/done operations use UID only. Do not modify by title.
-- If sync fails, the CLI returns JSON error code `SYNC_FAILURE`.
+- Credentials are read from `CALDAV_CALENDAR_AUTH_FILE` at runtime.
 
 Exit codes:
 
@@ -243,34 +271,6 @@ Confirmed writes append JSON lines to:
 ```text
 $CALDAV_CALENDAR_DATA_DIR/audit.log.jsonl
 ```
-
-Example:
-
-```json
-{
-  "timestamp": "2026-05-16T10:00:00+08:00",
-  "operation": "task.create",
-  "uid": "generated-uid",
-  "title": "Prepare summer camp application materials",
-  "dry_run": false,
-  "result": "ok"
-}
-```
-
-## Nextcloud vdirsyncer Notes
-
-The Python CLI does not replace `vdirsyncer` config. Configure
-`$CALDAV_CALENDAR_CONFIG_DIR/vdirsyncer/config` so events and tasks sync into
-the same vdir directories referenced by `caldav-calendar.json`.
-
-For Nextcloud, the remote URL is usually:
-
-```text
-https://cloud.example.com/remote.php/dav/calendars/USERNAME/
-```
-
-Events and tasks can use separate `pair` sections with separate local filesystem
-storages. Both should read the password through `CALDAV_CALENDAR_AUTH_FILE`.
 
 ## Manual Debug Passthrough
 
@@ -294,5 +294,5 @@ Use Nix for the development environment:
 ```sh
 nix develop -c pytest
 nix build .#default
-nix eval --json --impure --expr '(let flake = builtins.getFlake (toString ./.); system = builtins.currentSystem; in flake.openclawPlugin system)'
+nix eval --json --impure --expr '(let flake = builtins.getFlake (toString ./.) ; system = builtins.currentSystem; in flake.openclawPlugin system)'
 ```

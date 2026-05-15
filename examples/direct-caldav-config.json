@@ -1,0 +1,14 @@
+{
+  "backend": "direct-caldav",
+  "timezone": "Asia/Shanghai",
+  "base_url": "https://cloud.example.com/remote.php/dav/calendars/USERNAME/",
+  "username": "USERNAME",
+  "event_collections": {
+    "personal": "personal"
+  },
+  "task_collections": {
+    "Inbox": "tasks"
+  },
+  "default_event_calendar": "personal",
+  "default_task_list": "Inbox"
+}
