@@ -1,12 +1,12 @@
 ---
 name: caldav-calendar
-description: Sync and query CalDAV calendars (iCloud, Google, Fastmail, Nextcloud, etc.) using vdirsyncer + khal. Works on Linux.
+description: Sync and query CalDAV calendar events and VTODO tasks (iCloud, Google, Fastmail, Nextcloud, etc.) using vdirsyncer + khal + todoman. Works on Linux.
 metadata: {"clawdbot":{"emoji":"📅","os":["linux"],"requires":{"bins":["caldav-calendar"]},"install":[{"id":"nix-openclaw","kind":"nix","packages":["caldav-calendar"],"bins":["caldav-calendar"],"label":"Use the nix-openclaw caldav-calendar plugin"}]}}
 ---
 
-# CalDAV Calendar (vdirsyncer + khal)
+# CalDAV Calendar and Tasks (vdirsyncer + khal + todoman)
 
-**vdirsyncer** syncs CalDAV calendars to local `.ics` files. **khal** reads and writes them. In OpenClaw, call them through the `caldav-calendar` wrapper on PATH.
+**vdirsyncer** syncs CalDAV calendar and task collections to local `.ics` files. **khal** reads and writes calendar events. **todoman** reads and writes VTODO tasks, such as Nextcloud Tasks. In OpenClaw, call them through the `caldav-calendar` wrapper on PATH.
 
 ## Required Runtime Env
 
@@ -17,12 +17,16 @@ metadata: {"clawdbot":{"emoji":"📅","os":["linux"],"requires":{"bins":["caldav
 
 ## Sync First
 
-Always sync before querying or after making changes:
+Always sync before querying, and sync again after making event or task changes:
 ```bash
 caldav-calendar sync
 ```
 
-## View Events
+## Calendar Events
+
+Use these commands for calendar events. They are backed by `khal`.
+
+### View Events
 
 ```bash
 caldav-calendar list                        # Today
@@ -32,14 +36,14 @@ caldav-calendar list 2026-01-15 2026-01-20  # Date range
 caldav-calendar list -a Work today          # Specific calendar
 ```
 
-## Search
+### Search Events
 
 ```bash
 caldav-calendar search "meeting"
 caldav-calendar search "dentist" --format "{start-date} {title}"
 ```
 
-## Create Events
+### Create Events
 
 ```bash
 caldav-calendar new 2026-01-15 10:00 11:00 "Meeting title"
@@ -53,7 +57,7 @@ After creating, sync to push changes:
 caldav-calendar sync
 ```
 
-## Edit Events (interactive)
+### Edit Events (interactive)
 
 `caldav-calendar edit` is interactive — requires a TTY. Use tmux if automating:
 
@@ -77,11 +81,11 @@ After editing, sync:
 caldav-calendar sync
 ```
 
-## Delete Events
+### Delete Events
 
 Use `caldav-calendar edit`, then press `D` to delete.
 
-## Output Formats
+### Event Output Formats
 
 For scripting:
 ```bash
@@ -91,9 +95,49 @@ caldav-calendar list --format "{uid} | {title} | {calendar}" today
 
 Placeholders: `{title}`, `{description}`, `{start}`, `{end}`, `{start-date}`, `{start-time}`, `{end-date}`, `{end-time}`, `{location}`, `{calendar}`, `{uid}`
 
+## Tasks / VTODO
+
+Use these commands for VTODO task collections, including Nextcloud Tasks. They are backed by `todoman`.
+
+Sync before reading tasks:
+
+```bash
+caldav-calendar sync
+```
+
+List tasks:
+
+```bash
+caldav-calendar todo list
+caldav-calendar todo list --list Inbox
+caldav-calendar todo list --due 7d
+```
+
+Create tasks:
+
+```bash
+caldav-calendar todo new "Buy milk"
+caldav-calendar todo new --due tomorrow "Submit report"
+caldav-calendar todo new --list Work --priority high "Prepare agenda"
+```
+
+Inspect, edit, and complete tasks:
+
+```bash
+caldav-calendar todo show 123
+caldav-calendar todo edit 123
+caldav-calendar todo done 123
+```
+
+After creating, editing, or completing tasks, sync to push changes:
+
+```bash
+caldav-calendar sync
+```
+
 ## Caching
 
-khal caches events in its XDG data directory. If data looks stale after syncing:
+khal and todoman may cache local data in their XDG data directories. If event data looks stale after syncing:
 ```bash
 rm "$XDG_DATA_HOME/khal/khal.db"
 ```
@@ -102,7 +146,7 @@ rm "$XDG_DATA_HOME/khal/khal.db"
 
 ### 1. Configure vdirsyncer (`$XDG_CONFIG_HOME/vdirsyncer/config`)
 
-Example for iCloud:
+Example for an event calendar:
 ```ini
 [general]
 status_path = "~/.local/share/vdirsyncer/status/"
@@ -122,6 +166,27 @@ password.fetch = ["command", "sh", "-c", "cat \"$CALDAV_CALENDAR_AUTH_FILE\""]
 [storage icloud_local]
 type = "filesystem"
 path = "~/.local/share/vdirsyncer/calendars/"
+fileext = ".ics"
+```
+
+Example for a Nextcloud Tasks VTODO collection:
+
+```ini
+[pair nextcloud_tasks]
+a = "nextcloud_tasks_remote"
+b = "nextcloud_tasks_local"
+collections = ["from a", "from b"]
+conflict_resolution = "a wins"
+
+[storage nextcloud_tasks_remote]
+type = "caldav"
+url = "https://YOUR.CLOUD/remote.php/dav/calendars/USERNAME/"
+username = "USERNAME"
+password.fetch = ["command", "sh", "-c", "cat \"$CALDAV_CALENDAR_AUTH_FILE\""]
+
+[storage nextcloud_tasks_local]
+type = "filesystem"
+path = "~/.local/share/vdirsyncer/tasks/"
 fileext = ".ics"
 ```
 
@@ -148,7 +213,16 @@ timeformat = %H:%M
 dateformat = %Y-%m-%d
 ```
 
-### 3. Discover and sync
+### 3. Configure todoman (`$XDG_CONFIG_HOME/todoman/config.py`)
+
+```python
+path = "~/.local/share/vdirsyncer/tasks/*"
+default_list = "Inbox"
+date_format = "%Y-%m-%d"
+time_format = "%H:%M"
+```
+
+### 4. Discover and sync
 
 ```bash
 caldav-calendar discover   # First time only

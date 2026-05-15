@@ -1,7 +1,7 @@
 # AGENTS.md
 
 This repository is a Nix-native OpenClaw plugin wrapper for CalDAV calendar
-access through `vdirsyncer` and `khal`.
+events and VTODO tasks through `vdirsyncer`, `khal`, and `todoman`.
 
 ## Plugin id
 
@@ -18,8 +18,14 @@ The wrapper exposes these subcommands:
 - `caldav-calendar search ...`
 - `caldav-calendar new ...`
 - `caldav-calendar edit ...`
+- `caldav-calendar todo list ...`
+- `caldav-calendar todo new ...`
+- `caldav-calendar todo edit ...`
+- `caldav-calendar todo done ...`
+- `caldav-calendar todo show ...`
 - `caldav-calendar vdirsyncer ...`
 - `caldav-calendar khal ...`
+- `caldav-calendar todoman ...`
 
 ## Required environment
 
@@ -28,7 +34,7 @@ Set these values through `customPlugins.<plugin>.config.env`:
 - `CALDAV_CALENDAR_AUTH_FILE`: path to a machine-local secret file containing
   the CalDAV password or app password.
 - `CALDAV_CALENDAR_CONFIG_DIR`: plugin-specific config directory containing
-  the `vdirsyncer` and `khal` config files.
+  the `vdirsyncer`, `khal`, and `todoman` config files.
 
 Example placeholder:
 
@@ -74,11 +80,12 @@ declared state directory:
 
 - `.config/caldav-calendar`
 
-`vdirsyncer` and `khal` still expect their normal config files below the active
-config home:
+`vdirsyncer`, `khal`, and `todoman` still expect their normal config files below
+the active config home:
 
 - `$XDG_CONFIG_HOME/vdirsyncer/config`
 - `$XDG_CONFIG_HOME/khal/config`
+- `$XDG_CONFIG_HOME/todoman/config.py`
 
 Use `CALDAV_CALENDAR_AUTH_FILE` from the `vdirsyncer` config through a command
 password fetch, for example:
@@ -94,10 +101,12 @@ The wrapper declares these OpenClaw state directories:
 - `.config/caldav-calendar`
 - `.local/share/vdirsyncer`
 - `.local/share/khal`
+- `.local/share/todoman`
 
-`vdirsyncer` stores sync status and local calendar files under its configured
-paths. `khal` may store its event cache in `.local/share/khal` when the runtime
-uses XDG state/data locations.
+`vdirsyncer` stores sync status and local calendar/task files under its
+configured paths. `khal` may store its event cache in `.local/share/khal`, and
+`todoman` may use `.local/share/todoman`, when the runtime uses XDG state/data
+locations.
 
 ## CI
 

@@ -30,6 +30,7 @@
             runtimeInputs = [
               pkgs.coreutils
               pkgs.khal
+              pkgs.todoman
               pkgs.vdirsyncer
             ];
 
@@ -38,7 +39,7 @@
 
               usage() {
                 cat <<'USAGE'
-caldav-calendar: OpenClaw CalDAV wrapper around vdirsyncer and khal
+caldav-calendar: OpenClaw CalDAV wrapper around vdirsyncer, khal, and todoman
 
 Required environment:
   CALDAV_CALENDAR_AUTH_FILE       Path to the CalDAV/app-password secret file.
@@ -56,8 +57,14 @@ Commands:
   search [args...]               Run khal search.
   new [args...]                  Run khal new.
   edit [args...]                 Run khal edit.
+  todo list [args...]            Run todoman list.
+  todo new [args...]             Run todoman new.
+  todo edit [args...]            Run todoman edit.
+  todo done [args...]            Run todoman done.
+  todo show [args...]            Run todoman show.
   vdirsyncer [args...]           Run vdirsyncer directly.
   khal [args...]                 Run khal directly.
+  todoman [args...]              Run todoman directly.
 USAGE
               }
 
@@ -101,11 +108,22 @@ USAGE
                 list|search|new|edit)
                   exec khal "$command" "$@"
                   ;;
+                todo)
+                  if [ "$#" -eq 0 ]; then
+                    echo "caldav-calendar: todo requires a todoman subcommand" >&2
+                    usage >&2
+                    exit 64
+                  fi
+                  exec todo "$@"
+                  ;;
                 vdirsyncer)
                   exec vdirsyncer "$@"
                   ;;
                 khal)
                   exec khal "$@"
+                  ;;
+                todoman)
+                  exec todo "$@"
                   ;;
                 *)
                   echo "caldav-calendar: unknown command: $command" >&2
@@ -130,6 +148,7 @@ USAGE
             ".config/caldav-calendar"
             ".local/share/vdirsyncer"
             ".local/share/khal"
+            ".local/share/todoman"
           ];
           requiredEnv = [
             "CALDAV_CALENDAR_AUTH_FILE"
@@ -147,6 +166,7 @@ USAGE
             packages = [
               self.packages.${system}.default
               pkgs.khal
+              pkgs.todoman
               pkgs.vdirsyncer
             ];
           };
