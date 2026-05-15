@@ -1,58 +1,55 @@
 # AGENTS.md
 
-This repository is a Nix-native OpenClaw plugin wrapper for CalDAV calendar
-events and VTODO tasks through `vdirsyncer`, `khal`, and `todoman`.
+This repository is a Nix-native OpenClaw skill wrapper for agent-friendly
+CalDAV calendar events and VTODO tasks.
 
 ## Plugin id
 
 Use `caldav-calendar`.
 
-## Runtime command
+## Runtime model
 
-OpenClaw should call the `caldav-calendar` command from the plugin runtime PATH.
-The wrapper exposes these subcommands:
+Agent automation uses the Python CLI:
 
-- `caldav-calendar sync`
-- `caldav-calendar discover`
-- `caldav-calendar list ...`
-- `caldav-calendar search ...`
-- `caldav-calendar new ...`
-- `caldav-calendar edit ...`
-- `caldav-calendar todo list ...`
-- `caldav-calendar todo new ...`
-- `caldav-calendar todo edit ...`
-- `caldav-calendar todo done ...`
-- `caldav-calendar todo show ...`
-- `caldav-calendar vdirsyncer ...`
-- `caldav-calendar khal ...`
-- `caldav-calendar todoman ...`
+- `VEVENT` calendar events are generated/read directly as `.ics` files.
+- `VTODO` tasks are generated/read directly as `.ics` files.
+- Local vdir directories are synced with Nextcloud or another provider through
+  `vdirsyncer sync`.
+- `khal` and `todoman` remain installed for human/manual debugging only.
+
+Do not automate interactive editors or TUI screens.
 
 ## Required environment
 
 Set these values through `customPlugins.<plugin>.config.env`:
 
-- `CALDAV_CALENDAR_AUTH_FILE`: path to a machine-local secret file containing
-  the CalDAV password or app password.
-- `CALDAV_CALENDAR_CONFIG_DIR`: plugin-specific config directory containing
-  the `vdirsyncer`, `khal`, and `todoman` config files.
+- `CALDAV_CALENDAR_CONFIG_DIR`: directory containing `caldav-calendar.json`
+  or `config.json`, plus optional `vdirsyncer`, `khal`, and `todoman` configs.
+- `CALDAV_CALENDAR_AUTH_FILE`: runtime secret file path. Do not put this file
+  in the Nix store.
+- `CALDAV_CALENDAR_DATA_DIR`: local data directory for vdirs and audit logs.
+- `CALDAV_CALENDAR_DEFAULT_TIMEZONE`: default timezone, such as
+  `Asia/Shanghai`.
 
 Example placeholder:
 
 ```nix
 customPlugins = [
   {
-    source = "github:owner/caldav-calendar?rev=<commit>&narHash=<narHash>";
+    source = "github:owner/nix-caldav-calendar?rev=<commit>&narHash=<narHash>";
     config = {
       env = {
-        CALDAV_CALENDAR_AUTH_FILE = "/run/agenix/caldav-calendar-auth";
         CALDAV_CALENDAR_CONFIG_DIR = "/var/lib/openclaw/caldav-calendar/config";
+        CALDAV_CALENDAR_AUTH_FILE = "/run/agenix/caldav-calendar-auth";
+        CALDAV_CALENDAR_DATA_DIR = "/var/lib/openclaw/caldav-calendar/data";
+        CALDAV_CALENDAR_DEFAULT_TIMEZONE = "Asia/Shanghai";
       };
       settings = {
-        provider = "icloud";
+        provider = "nextcloud";
+        baseUrl = "https://cloud.example.com";
         username = "user@example.com";
-        calendar = "Home";
-        syncDays = 30;
-        enabled = true;
+        default_event_calendar = "personal";
+        default_task_list = "Inbox";
       };
     };
   }
@@ -60,56 +57,76 @@ customPlugins = [
 ```
 
 No real credentials belong in this repository. In production, keep credentials
-under a secret-managed path such as `/run/agenix/caldav-calendar-auth`,
-`/run/secrets/caldav-calendar-auth`, or another host-local equivalent.
+under secret-managed paths such as `/run/agenix/...` or `/run/secrets/...`.
 
-## Config directories
+## Python config
 
-The wrapper honors config locations explicitly:
+The CLI reads:
 
-- `CALDAV_CALENDAR_CONFIG_DIR`: plugin-specific config directory. When set, the
-  wrapper exports it as `XDG_CONFIG_HOME` for `vdirsyncer` and `khal`.
-- `XDG_CONFIG_HOME`: standard XDG config directory. Used when
-  `CALDAV_CALENDAR_CONFIG_DIR` is unset.
+- `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`
+- `$CALDAV_CALENDAR_CONFIG_DIR/config.json`
 
-One of these must be set. The wrapper intentionally does not fall back to
-`~/.config`.
+Example:
 
-The OpenClaw host renders typed `config.settings` to `config.json` in the first
-declared state directory:
-
-- `.config/caldav-calendar`
-
-`vdirsyncer`, `khal`, and `todoman` still expect their normal config files below
-the active config home:
-
-- `$XDG_CONFIG_HOME/vdirsyncer/config`
-- `$XDG_CONFIG_HOME/khal/config`
-- `$XDG_CONFIG_HOME/todoman/config.py`
-
-Use `CALDAV_CALENDAR_AUTH_FILE` from the `vdirsyncer` config through a command
-password fetch, for example:
-
-```ini
-password.fetch = ["command", "sh", "-c", "cat \"$CALDAV_CALENDAR_AUTH_FILE\""]
+```json
+{
+  "timezone": "Asia/Shanghai",
+  "event_calendars": {
+    "personal": "/home/user/.local/share/caldav/personal-calendar"
+  },
+  "task_lists": {
+    "Inbox": "/home/user/.local/share/caldav/tasks-inbox"
+  },
+  "default_event_calendar": "personal",
+  "default_task_list": "Inbox"
+}
 ```
 
-## Runtime state
+## Agent-facing commands
 
-The wrapper declares these OpenClaw state directories:
+All agent-facing commands are non-interactive and emit JSON:
 
-- `.config/caldav-calendar`
-- `.local/share/vdirsyncer`
-- `.local/share/khal`
-- `.local/share/todoman`
+- `caldav-calendar doctor --json`
+- `caldav-calendar sync --json`
+- `caldav-calendar event list --from YYYY-MM-DD --to YYYY-MM-DD --json`
+- `caldav-calendar event get --uid UID --json`
+- `caldav-calendar event create --json-input FILE --dry-run`
+- `caldav-calendar event create --json-input FILE --confirm`
+- `caldav-calendar task list --status open|done|all --json`
+- `caldav-calendar task get --uid UID --json`
+- `caldav-calendar task create --json-input FILE --dry-run`
+- `caldav-calendar task create --json-input FILE --confirm`
+- `caldav-calendar task done --uid UID --dry-run`
+- `caldav-calendar task done --uid UID --confirm`
 
-`vdirsyncer` stores sync status and local calendar/task files under its
-configured paths. `khal` may store its event cache in `.local/share/khal`, and
-`todoman` may use `.local/share/todoman`, when the runtime uses XDG state/data
-locations.
+Write commands must use exactly one of `--dry-run` or `--confirm`. Without one,
+the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
+
+## Manual passthrough
+
+These commands are available for humans and debugging, not agent automation:
+
+- `caldav-calendar khal ...`
+- `caldav-calendar todoman ...`
+- `caldav-calendar vdirsyncer ...`
+- `caldav-calendar edit ...`
+- `caldav-calendar todo edit ...`
+
+Agents must not drive editors, TUIs, or interactive prompts.
+
+## Audit log
+
+Confirmed writes append JSON lines to:
+
+```text
+$CALDAV_CALENDAR_DATA_DIR/audit.log.jsonl
+```
 
 ## CI
 
-This repository does not currently include Garnix configuration. If Garnix is
-added later, include checks that build `packages.<system>.default` and evaluate
-`openclawPlugin`.
+Run:
+
+```sh
+nix develop -c pytest
+nix build .#default
+```

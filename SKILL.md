@@ -1,230 +1,195 @@
 ---
 name: caldav-calendar
-description: Sync and query CalDAV calendar events and VTODO tasks (iCloud, Google, Fastmail, Nextcloud, etc.) using vdirsyncer + khal + todoman. Works on Linux.
+description: Agent-friendly CalDAV calendar events and VTODO tasks for Nextcloud and compatible providers. Uses JSON commands, local .ics vdirs, and vdirsyncer sync.
 metadata: {"clawdbot":{"emoji":"📅","os":["linux"],"requires":{"bins":["caldav-calendar"]},"install":[{"id":"nix-openclaw","kind":"nix","packages":["caldav-calendar"],"bins":["caldav-calendar"],"label":"Use the nix-openclaw caldav-calendar plugin"}]}}
 ---
 
-# CalDAV Calendar and Tasks (vdirsyncer + khal + todoman)
+# CalDAV Calendar + Tasks
 
-**vdirsyncer** syncs CalDAV calendar and task collections to local `.ics` files. **khal** reads and writes calendar events. **todoman** reads and writes VTODO tasks, such as Nextcloud Tasks. In OpenClaw, call them through the `caldav-calendar` wrapper on PATH.
+Use `caldav-calendar` for non-interactive JSON automation.
 
-## Required Runtime Env
+- Calendar events are `VEVENT`.
+- Tasks/todos are `VTODO`.
+- Local `.ics` files live in configured vdir directories.
+- `vdirsyncer` syncs local vdirs with Nextcloud or another CalDAV provider.
+- `khal` and `todoman` are available only as manual/debug passthrough tools.
 
-`caldav-calendar` fails fast unless these are configured by the host:
+## Agent Rules
 
-- `CALDAV_CALENDAR_AUTH_FILE`: readable file containing the CalDAV/app-password secret.
-- `CALDAV_CALENDAR_CONFIG_DIR`: explicit plugin config directory. The wrapper also honors `XDG_CONFIG_HOME` when used outside OpenClaw.
+Never use interactive edit commands for automation:
 
-## Sync First
+- Do not use `caldav-calendar edit ...` for agent workflows.
+- Do not use `caldav-calendar todo edit ...` for agent workflows.
+- Do not drive editors, TUIs, prompts, vim, nano, or keyboard interaction.
 
-Always sync before querying, and sync again after making event or task changes:
-```bash
-caldav-calendar sync
+Use JSON-based commands only:
+
+- Use `event` commands for calendar items with fixed start/end times.
+- Use `task` commands for todos with due dates or completion state.
+- Use UID for get/done/update/delete style operations.
+- Always run write operations with `--dry-run` first.
+- Only run write operations with `--confirm` after user confirmation.
+- After confirmed writes, sync and read back by UID.
+
+## Required Env
+
+The host must provide:
+
+- `CALDAV_CALENDAR_CONFIG_DIR`
+- `CALDAV_CALENDAR_AUTH_FILE`
+- `CALDAV_CALENDAR_DATA_DIR`
+- `CALDAV_CALENDAR_DEFAULT_TIMEZONE`
+
+Credentials must live in runtime secret paths such as `/run/agenix/...` or
+`/run/secrets/...`, never in the Nix store.
+
+The Python CLI reads config from:
+
+- `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`
+- `$CALDAV_CALENDAR_CONFIG_DIR/config.json`
+
+Example:
+
+```json
+{
+  "timezone": "Asia/Shanghai",
+  "event_calendars": {
+    "personal": "/home/user/.local/share/caldav/personal-calendar"
+  },
+  "task_lists": {
+    "Inbox": "/home/user/.local/share/caldav/tasks-inbox"
+  },
+  "default_event_calendar": "personal",
+  "default_task_list": "Inbox"
+}
 ```
 
-## Calendar Events
-
-Use these commands for calendar events. They are backed by `khal`.
-
-### View Events
+## Doctor
 
 ```bash
-caldav-calendar list                        # Today
-caldav-calendar list today 7d               # Next 7 days
-caldav-calendar list tomorrow               # Tomorrow
-caldav-calendar list 2026-01-15 2026-01-20  # Date range
-caldav-calendar list -a Work today          # Specific calendar
+caldav-calendar doctor --json
 ```
 
-### Search Events
+Use this before other operations. It reports env presence, tool availability,
+configured timezone, and whether vdir directories exist.
+
+## Sync
 
 ```bash
-caldav-calendar search "meeting"
-caldav-calendar search "dentist" --format "{start-date} {title}"
+caldav-calendar sync --json
 ```
 
-### Create Events
+This runs `vdirsyncer sync` and returns structured JSON. Use it before reading
+and after confirmed writes.
+
+## Events
+
+List events:
 
 ```bash
-caldav-calendar new 2026-01-15 10:00 11:00 "Meeting title"
-caldav-calendar new 2026-01-15 "All day event"
-caldav-calendar new tomorrow 14:00 15:30 "Call" -a Work
-caldav-calendar new 2026-01-15 10:00 11:00 "With notes" :: Description goes here
+caldav-calendar event list --from 2026-05-16 --to 2026-05-20 --json
 ```
 
-After creating, sync to push changes:
-```bash
-caldav-calendar sync
-```
-
-### Edit Events (interactive)
-
-`caldav-calendar edit` is interactive — requires a TTY. Use tmux if automating:
+Get one event:
 
 ```bash
-caldav-calendar edit "search term"
-caldav-calendar edit -a CalendarName "search term"
-caldav-calendar edit --show-past "old event"
+caldav-calendar event get --uid UID --json
 ```
 
-Menu options:
-- `s` → edit summary
-- `d` → edit description
-- `t` → edit datetime range
-- `l` → edit location
-- `D` → delete event
-- `n` → skip (save changes, next match)
-- `q` → quit
-
-After editing, sync:
-```bash
-caldav-calendar sync
-```
-
-### Delete Events
-
-Use `caldav-calendar edit`, then press `D` to delete.
-
-### Event Output Formats
-
-For scripting:
-```bash
-caldav-calendar list --format "{start-date} {start-time}-{end-time} {title}" today 7d
-caldav-calendar list --format "{uid} | {title} | {calendar}" today
-```
-
-Placeholders: `{title}`, `{description}`, `{start}`, `{end}`, `{start-date}`, `{start-time}`, `{end-date}`, `{end-time}`, `{location}`, `{calendar}`, `{uid}`
-
-## Tasks / VTODO
-
-Use these commands for VTODO task collections, including Nextcloud Tasks. They are backed by `todoman`.
-
-Sync before reading tasks:
+Dry-run create:
 
 ```bash
-caldav-calendar sync
+caldav-calendar event create --json-input examples/event-create.json --dry-run
 ```
+
+Confirmed create:
+
+```bash
+caldav-calendar event create --json-input examples/event-create.json --confirm
+caldav-calendar event get --uid UID --json
+```
+
+Event input:
+
+```json
+{
+  "calendar": "personal",
+  "title": "Review summer camp materials",
+  "start": "2026-05-16T14:00:00",
+  "end": "2026-05-16T16:00:00",
+  "timezone": "Asia/Shanghai",
+  "location": "",
+  "description": "Review summer camp knowledge points",
+  "tags": ["summer-camp", "study"]
+}
+```
+
+## Tasks
 
 List tasks:
 
 ```bash
-caldav-calendar todo list
-caldav-calendar todo list --list Inbox
-caldav-calendar todo list --due 7d
+caldav-calendar task list --status open --json
+caldav-calendar task list --status done --json
+caldav-calendar task list --status all --json
 ```
 
-Create tasks:
+Get one task:
 
 ```bash
-caldav-calendar todo new "Buy milk"
-caldav-calendar todo new --due tomorrow "Submit report"
-caldav-calendar todo new --list Work --priority high "Prepare agenda"
+caldav-calendar task get --uid UID --json
 ```
 
-Inspect, edit, and complete tasks:
+Dry-run create:
 
 ```bash
-caldav-calendar todo show 123
-caldav-calendar todo edit 123
-caldav-calendar todo done 123
+caldav-calendar task create --json-input examples/task-create.json --dry-run
 ```
 
-After creating, editing, or completing tasks, sync to push changes:
+Confirmed create:
 
 ```bash
-caldav-calendar sync
+caldav-calendar task create --json-input examples/task-create.json --confirm
+caldav-calendar task get --uid UID --json
 ```
 
-## Caching
-
-khal and todoman may cache local data in their XDG data directories. If event data looks stale after syncing:
-```bash
-rm "$XDG_DATA_HOME/khal/khal.db"
-```
-
-## Initial Setup
-
-### 1. Configure vdirsyncer (`$XDG_CONFIG_HOME/vdirsyncer/config`)
-
-Example for an event calendar:
-```ini
-[general]
-status_path = "~/.local/share/vdirsyncer/status/"
-
-[pair icloud_calendar]
-a = "icloud_remote"
-b = "icloud_local"
-collections = ["from a", "from b"]
-conflict_resolution = "a wins"
-
-[storage icloud_remote]
-type = "caldav"
-url = "https://caldav.icloud.com/"
-username = "your@icloud.com"
-password.fetch = ["command", "sh", "-c", "cat \"$CALDAV_CALENDAR_AUTH_FILE\""]
-
-[storage icloud_local]
-type = "filesystem"
-path = "~/.local/share/vdirsyncer/calendars/"
-fileext = ".ics"
-```
-
-Example for a Nextcloud Tasks VTODO collection:
-
-```ini
-[pair nextcloud_tasks]
-a = "nextcloud_tasks_remote"
-b = "nextcloud_tasks_local"
-collections = ["from a", "from b"]
-conflict_resolution = "a wins"
-
-[storage nextcloud_tasks_remote]
-type = "caldav"
-url = "https://YOUR.CLOUD/remote.php/dav/calendars/USERNAME/"
-username = "USERNAME"
-password.fetch = ["command", "sh", "-c", "cat \"$CALDAV_CALENDAR_AUTH_FILE\""]
-
-[storage nextcloud_tasks_local]
-type = "filesystem"
-path = "~/.local/share/vdirsyncer/tasks/"
-fileext = ".ics"
-```
-
-Provider URLs:
-- iCloud: `https://caldav.icloud.com/`
-- Google: Use `google_calendar` storage type
-- Fastmail: `https://caldav.fastmail.com/dav/calendars/user/EMAIL/`
-- Nextcloud: `https://YOUR.CLOUD/remote.php/dav/calendars/USERNAME/`
-
-### 2. Configure khal (`$XDG_CONFIG_HOME/khal/config`)
-
-```ini
-[calendars]
-[[my_calendars]]
-path = ~/.local/share/vdirsyncer/calendars/*
-type = discover
-
-[default]
-default_calendar = Home
-highlight_event_days = True
-
-[locale]
-timeformat = %H:%M
-dateformat = %Y-%m-%d
-```
-
-### 3. Configure todoman (`$XDG_CONFIG_HOME/todoman/config.py`)
-
-```python
-path = "~/.local/share/vdirsyncer/tasks/*"
-default_list = "Inbox"
-date_format = "%Y-%m-%d"
-time_format = "%H:%M"
-```
-
-### 4. Discover and sync
+Dry-run done:
 
 ```bash
-caldav-calendar discover   # First time only
-caldav-calendar sync
+caldav-calendar task done --uid UID --dry-run
 ```
+
+Confirmed done:
+
+```bash
+caldav-calendar task done --uid UID --confirm
+caldav-calendar task get --uid UID --json
+```
+
+Task input:
+
+```json
+{
+  "list": "Inbox",
+  "title": "Prepare summer camp application materials",
+  "due": "2026-05-18",
+  "timezone": "Asia/Shanghai",
+  "priority": 5,
+  "description": "Collect transcript, CV, personal statement, project experience, and recommendation letter materials",
+  "tags": ["summer-camp", "application"]
+}
+```
+
+## Manual Debug Passthrough
+
+These remain available for humans, not agent automation:
+
+```bash
+caldav-calendar khal ...
+caldav-calendar todoman ...
+caldav-calendar vdirsyncer ...
+caldav-calendar list ...
+caldav-calendar todo ...
+```
+
+Do not use passthrough edit commands in automated workflows.
