@@ -15,6 +15,7 @@ from .config import load_config
 from .errors import (
     CaldavCalendarError,
     ConfirmationRequiredError,
+    FilesystemWriteError,
     NotFoundError,
     ValidationError,
 )
@@ -111,6 +112,41 @@ def cmd_sync(args: argparse.Namespace) -> int:
 def cmd_caldav_discover(args: argparse.Namespace) -> int:
     config = load_config()
     return emit({"ok": True, "operation": "caldav.discover", "collections": remote.discover(config)})
+
+
+def cmd_caldav_suggest_config(args: argparse.Namespace) -> int:
+    config = load_config()
+    suggestion = remote.suggest_config(config)
+    return emit({"ok": True, "operation": "caldav.suggest-config", **suggestion})
+
+
+def cmd_caldav_write_config(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config(require_files=False)
+    data = load_json_file(args.json_input)
+    if data.get("backend") != "direct-caldav":
+        raise ValidationError("Config backend must be direct-caldav")
+    if not isinstance(data.get("event_collections"), dict) or not data["event_collections"]:
+        raise ValidationError("Config must include non-empty event_collections")
+    if not isinstance(data.get("task_collections"), dict) or not data["task_collections"]:
+        raise ValidationError("Config must include non-empty task_collections")
+    target = config.config_dir / "caldav-calendar.json"
+    payload = {
+        "ok": True,
+        "operation": "caldav.write-config",
+        "dry_run": dry_run,
+        "target": str(target),
+        "config": data,
+    }
+    if dry_run:
+        return emit({**payload, "would_write": True})
+    try:
+        config.config_dir.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    except OSError as exc:
+        raise FilesystemWriteError(f"Failed to write config: {exc}") from exc
+    _audit(config, "caldav.write-config", {"dry_run": False, "result": "ok", "target": str(target)})
+    return emit({**payload, "written": True})
 
 
 def cmd_event_list(args: argparse.Namespace) -> int:
@@ -378,6 +414,14 @@ def build_parser() -> argparse.ArgumentParser:
     caldav_discover = caldav_sub.add_parser("discover")
     caldav_discover.add_argument("--json", action="store_true")
     caldav_discover.set_defaults(func=cmd_caldav_discover)
+    caldav_suggest = caldav_sub.add_parser("suggest-config")
+    caldav_suggest.add_argument("--json", action="store_true")
+    caldav_suggest.set_defaults(func=cmd_caldav_suggest_config)
+    caldav_write = caldav_sub.add_parser("write-config")
+    caldav_write.add_argument("--json-input", required=True)
+    caldav_write.add_argument("--dry-run", action="store_true")
+    caldav_write.add_argument("--confirm", action="store_true")
+    caldav_write.set_defaults(func=cmd_caldav_write_config)
     return parser
 
 

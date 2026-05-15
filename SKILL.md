@@ -29,6 +29,7 @@ Use JSON-based commands only:
 
 - Use `event` commands for calendar items with fixed start/end times.
 - Use `task` commands for todos with due dates or completion state.
+- Use `caldav suggest-config` and `caldav write-config` for setup.
 - Use UID for get/done/update/delete style operations.
 - Always run write operations with `--dry-run` first.
 - Only run write operations with `--confirm` after user confirmation.
@@ -97,6 +98,26 @@ caldav-calendar caldav discover --json
 Use this to classify collections. Only use `VEVENT` collections for events and
 `VTODO` collections for tasks. Do not write to contact birthdays or other
 generated/special collections.
+
+Suggest setup config:
+
+```bash
+caldav-calendar caldav suggest-config --json
+```
+
+If `needs_user_choice` is false, ask the user whether to write the recommended
+config. If `needs_user_choice` is true, ask the user to choose from
+`event_candidates` and `task_candidates`.
+
+Write config only with dry-run/confirm:
+
+```bash
+caldav-calendar caldav write-config --json-input suggested.json --dry-run
+caldav-calendar caldav write-config --json-input suggested.json --confirm
+```
+
+Never hand-edit `caldav-calendar.json` as an agent action when the setup helper
+can write it.
 
 ## Events
 

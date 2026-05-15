@@ -99,6 +99,64 @@ def discover(config) -> list[dict[str, Any]]:
     return collections
 
 
+def is_special_collection(collection: dict[str, Any]) -> bool:
+    slug = collection.get("slug", "").lower()
+    display_name = collection.get("display_name", "").lower()
+    special_markers = [
+        "birthday",
+        "birthdays",
+        "contact_birthdays",
+        "contact birthdays",
+    ]
+    return any(marker in slug or marker in display_name for marker in special_markers)
+
+
+def suggest_config(config) -> dict[str, Any]:
+    collections = discover(config)
+    ignored = []
+    event_candidates = []
+    task_candidates = []
+
+    for collection in collections:
+        supports = {component.upper() for component in collection.get("supports", [])}
+        if is_special_collection(collection):
+            ignored.append({**collection, "reason": "special/generated collection"})
+            continue
+        if "VEVENT" in supports:
+            event_candidates.append(collection)
+        if "VTODO" in supports:
+            task_candidates.append(collection)
+        if "VEVENT" not in supports and "VTODO" not in supports:
+            ignored.append({**collection, "reason": "does not advertise VEVENT or VTODO"})
+
+    recommended_event = event_candidates[0] if len(event_candidates) == 1 else None
+    recommended_task = task_candidates[0] if len(task_candidates) == 1 else None
+    needs_user_choice = len(event_candidates) != 1 or len(task_candidates) != 1
+    recommended_config = {
+        "backend": "direct-caldav",
+        "timezone": config.timezone,
+        "base_url": config.base_url,
+        "username": config.username,
+        "event_collections": {},
+        "task_collections": {},
+        "default_event_calendar": "personal",
+        "default_task_list": "Inbox",
+    }
+    if recommended_event:
+        recommended_config["event_collections"]["personal"] = recommended_event["slug"]
+    if recommended_task:
+        recommended_config["task_collections"]["Inbox"] = recommended_task["slug"]
+
+    return {
+        "collections": collections,
+        "event_candidates": event_candidates,
+        "task_candidates": task_candidates,
+        "ignored": ignored,
+        "needs_user_choice": needs_user_choice,
+        "recommended_config": recommended_config,
+    }
+
+
 def _collection(config, kind: str, name: str | None):
     mapping = config.event_collections if kind == "event" else config.task_collections
     default_name = config.default_event_calendar if kind == "event" else config.default_task_list

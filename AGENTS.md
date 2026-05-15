@@ -14,6 +14,9 @@ Agent automation uses the Python CLI. Prefer `backend = "direct-caldav"`:
 - `VEVENT` calendar events are read/written through `python-caldav`.
 - `VTODO` tasks are read/written through `python-caldav`.
 - `caldav discover --json` classifies remote collections by supported component.
+- `caldav suggest-config --json` creates a deterministic recommended config.
+- `caldav write-config --json-input FILE --dry-run|--confirm` is the only
+  agent-safe way to write setup config.
 - Legacy `backend = "vdir"` remains available for local `.ics` files and
   `vdirsyncer sync`.
 - `khal` and `todoman` remain installed for human/manual debugging only.
@@ -93,6 +96,9 @@ All agent-facing commands are non-interactive and emit JSON:
 
 - `caldav-calendar doctor --json`
 - `caldav-calendar caldav discover --json`
+- `caldav-calendar caldav suggest-config --json`
+- `caldav-calendar caldav write-config --json-input FILE --dry-run`
+- `caldav-calendar caldav write-config --json-input FILE --confirm`
 - `caldav-calendar sync --json`
 - `caldav-calendar event list --from YYYY-MM-DD --to YYYY-MM-DD --json`
 - `caldav-calendar event get --uid UID --json`
@@ -107,6 +113,10 @@ All agent-facing commands are non-interactive and emit JSON:
 
 Write commands must use exactly one of `--dry-run` or `--confirm`. Without one,
 the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
+
+Agents must not hand-edit `caldav-calendar.json`. Use `suggest-config` to
+classify collections and `write-config` to write the selected config. If
+`needs_user_choice` is true, ask the user which event/task collection to use.
 
 ## Manual passthrough
 

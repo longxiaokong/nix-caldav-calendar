@@ -138,6 +138,27 @@ Use only collections that advertise the matching component:
 - `VTODO` collections are valid task lists
 - generated collections such as contact birthdays should not be agent write targets
 
+For agent setup, prefer deterministic helpers:
+
+```sh
+caldav-calendar caldav suggest-config --json
+```
+
+This returns `event_candidates`, `task_candidates`, `ignored`,
+`needs_user_choice`, and `recommended_config`. If there is exactly one event
+candidate and one task candidate, `recommended_config` is complete. If
+`needs_user_choice` is true, the agent should ask the user which event/task
+collection to use.
+
+Write config only through the explicit writer:
+
+```sh
+caldav-calendar caldav write-config --json-input suggested.json --dry-run
+caldav-calendar caldav write-config --json-input suggested.json --confirm
+```
+
+Agents should not hand-edit `caldav-calendar.json`.
+
 ## Legacy vdir Config
 
 The previous vdirsyncer-backed mode is still available:
@@ -181,6 +202,18 @@ caldav-calendar caldav discover --json
 
 Lists remote collections with slug, display name, href, and supported CalDAV
 components. Use this to choose event/task collections safely.
+
+### Suggest / Write Config
+
+```sh
+caldav-calendar caldav suggest-config --json
+caldav-calendar caldav write-config --json-input suggested.json --dry-run
+caldav-calendar caldav write-config --json-input suggested.json --confirm
+```
+
+Use `suggest-config` to classify collections and produce a recommended config.
+Use `write-config` to write the selected config. `write-config` also requires
+dry-run/confirm safety.
 
 ### Sync
 
@@ -250,6 +283,7 @@ Task input:
 - `--dry-run` validates and returns the item that would be written.
 - `--confirm` performs the actual write.
 - Update/done operations use UID only. Do not modify by title.
+- Config writes must use `caldav write-config --dry-run` before `--confirm`.
 - Credentials are read from `CALDAV_CALENDAR_AUTH_FILE` at runtime.
 
 Exit codes:
