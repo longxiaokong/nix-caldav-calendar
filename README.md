@@ -237,6 +237,8 @@ caldav-calendar event update --uid UID --json-input examples/event-update.json -
 caldav-calendar event update --uid UID --json-input examples/event-update.json --confirm
 caldav-calendar event delete --uid UID --dry-run
 caldav-calendar event delete --uid UID --confirm
+caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --dry-run
+caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --confirm
 ```
 
 Event input:
@@ -269,6 +271,12 @@ Event input:
 For update JSON, set `"recurrence": null` to remove an existing repeat rule and
 `"reminders": null` to remove all alarms.
 
+Use `event recurrence trim --before-date YYYY-MM-DD` to delete instances on
+that date and after it while keeping earlier instances. For example, a weekly
+event on May 16, 23, and 30 trimmed with `--before-date 2026-05-30` keeps May
+16 and May 23. Use `event delete --uid UID` to delete the entire recurring
+series.
+
 ### Tasks
 
 ```sh
@@ -284,6 +292,8 @@ caldav-calendar task done --uid UID --dry-run
 caldav-calendar task done --uid UID --confirm
 caldav-calendar task delete --uid UID --dry-run
 caldav-calendar task delete --uid UID --confirm
+caldav-calendar task recurrence trim --uid UID --before-date 2026-05-30 --dry-run
+caldav-calendar task recurrence trim --uid UID --before-date 2026-05-30 --confirm
 ```
 
 Task input:
@@ -308,6 +318,10 @@ Task input:
 
 Tasks support the same optional `recurrence` and `reminders` fields as events.
 Reminder triggers are relative and use `minutes_before`.
+
+Use `task recurrence trim --before-date YYYY-MM-DD` to delete recurring task
+instances on that date and after it while keeping earlier instances. Use
+`task delete --uid UID` to delete the entire recurring task series.
 
 ## Safety Rules
 

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from icalendar import Alarm, Calendar
 
-from .errors import ConflictError, FilesystemWriteError, NotFoundError
+from dateutil.rrule import rrulestr
+
+from .errors import ConflictError, FilesystemWriteError, NotFoundError, ValidationError
 
 
 @dataclass(frozen=True)
@@ -179,6 +181,66 @@ def _replace_recurrence(component: Any, value: dict | None) -> None:
         del component["rrule"]
     if value is not None:
         component.add("rrule", value)
+
+
+def _rrule_to_update_dict(value: Any) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    key_map = {"FREQ": "freq", "INTERVAL": "interval", "COUNT": "count", "UNTIL": "until", "BYDAY": "byday"}
+    for key, raw_value in value.items():
+        output_key = key_map.get(str(key).upper())
+        if output_key is None:
+            output_key = str(key).lower()
+        items = raw_value if isinstance(raw_value, list) else [raw_value]
+        if len(items) == 1 and output_key != "byday":
+            output[output_key] = items[0]
+        else:
+            output[output_key] = items
+    return output
+
+
+def _recurrence_anchor(component: Any, component_name: str) -> date | datetime:
+    key = "dtstart" if component_name == "VEVENT" else "due"
+    value = _prop_dt(component, key)
+    if value is None and component_name == "VTODO":
+        value = _prop_dt(component, "dtstart")
+    if value is None:
+        raise ValidationError(f"{component_name} recurrence trim requires DTSTART or DUE")
+    return value
+
+
+def _as_rule_datetime(value: date | datetime) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.combine(value, time.min)
+
+
+def trim_recurrence_calendar(calendar: Calendar, uid: str, component_name: str, before_date: date) -> Calendar:
+    for component in calendar.walk(component_name):
+        if _component_uid(component) != uid:
+            continue
+        rrule_value = component.get("rrule")
+        if rrule_value is None:
+            raise ValidationError(f"{component_name} has no recurrence rule to trim")
+        anchor = _recurrence_anchor(component, component_name)
+        dtstart = _as_rule_datetime(anchor)
+        cutoff = datetime.combine(before_date, time.min, tzinfo=dtstart.tzinfo)
+        rule_text = f"RRULE:{rrule_value.to_ical().decode('utf-8')}"
+        rule = rrulestr(rule_text, dtstart=dtstart)
+        kept = rule.between(dtstart - timedelta(seconds=1), cutoff, inc=False)
+        keep_count = len(kept)
+        if keep_count < 1:
+            raise ValidationError("Trim date would remove every occurrence; use delete by UID instead")
+        updates = _rrule_to_update_dict(rrule_value)
+        updates.pop("until", None)
+        updates["count"] = keep_count
+        _replace_recurrence(component, updates)
+        _replace_prop(component, "last-modified", datetime.now(timezone.utc))
+        return calendar
+    raise NotFoundError(f"{component_name} not found for UID: {uid}")
+
+
+def trim_recurrence(item: VdirItem, component_name: str, before_date: date) -> Calendar:
+    return trim_recurrence_calendar(read_calendar(item.path), _component_uid(item.component), component_name, before_date)
 
 
 def _replace_reminders(component: Any, reminders: list[dict]) -> None:

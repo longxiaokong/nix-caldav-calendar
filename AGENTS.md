@@ -108,6 +108,8 @@ All agent-facing commands are non-interactive and emit JSON:
 - `caldav-calendar event update --uid UID --json-input FILE --confirm`
 - `caldav-calendar event delete --uid UID --dry-run`
 - `caldav-calendar event delete --uid UID --confirm`
+- `caldav-calendar event recurrence trim --uid UID --before-date YYYY-MM-DD --dry-run`
+- `caldav-calendar event recurrence trim --uid UID --before-date YYYY-MM-DD --confirm`
 - `caldav-calendar task list --status open|done|all --json`
 - `caldav-calendar task get --uid UID --json`
 - `caldav-calendar task create --json-input FILE --dry-run`
@@ -118,6 +120,8 @@ All agent-facing commands are non-interactive and emit JSON:
 - `caldav-calendar task done --uid UID --confirm`
 - `caldav-calendar task delete --uid UID --dry-run`
 - `caldav-calendar task delete --uid UID --confirm`
+- `caldav-calendar task recurrence trim --uid UID --before-date YYYY-MM-DD --dry-run`
+- `caldav-calendar task recurrence trim --uid UID --before-date YYYY-MM-DD --confirm`
 
 Write commands must use exactly one of `--dry-run` or `--confirm`. Without one,
 the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
@@ -137,6 +141,11 @@ and supports `frequency`, `interval`, `count`, `until`, and `by_day`.
 `description`; only display alarms are supported. In update JSON,
 `"recurrence": null` clears an existing repeat rule and `"reminders": null`
 clears all alarms.
+
+To delete part of a recurring series, use `recurrence trim`. Its `--before-date`
+keeps instances before that date and deletes instances on that date and after it
+by rewriting the repeat rule to a shorter `COUNT`. To delete the whole recurring
+series, use `event delete --uid` or `task delete --uid`.
 
 ## Manual passthrough
 

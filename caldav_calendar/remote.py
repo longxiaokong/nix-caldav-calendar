@@ -8,7 +8,14 @@ from urllib.parse import urlparse
 from icalendar import Calendar
 
 from .errors import ConfigError, NotFoundError, SyncFailureError, ValidationError
-from .vdir import event_overlaps, event_summary, task_summary, update_event_calendar, update_task_calendar
+from .vdir import (
+    event_overlaps,
+    event_summary,
+    task_summary,
+    trim_recurrence_calendar,
+    update_event_calendar,
+    update_task_calendar,
+)
 
 
 @dataclass(frozen=True)
@@ -312,10 +319,36 @@ def update_remote_event(config, uid: str, updates: dict[str, Any]) -> dict[str, 
     return event_summary(refreshed, refreshed.collection_name)
 
 
+def trim_remote_event_recurrence(config, uid: str, before_date: date) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "event", uid)
+    calendar = _calendar_from_resource(item.resource)
+    updated_calendar = trim_recurrence_calendar(calendar, uid, "VEVENT", before_date)
+    item.resource.data = updated_calendar.to_ical().decode("utf-8")
+    save = getattr(item.resource, "save", None)
+    if not callable(save):
+        raise SyncFailureError("python-caldav resource does not support save")
+    save()
+    refreshed = _find_remote_by_uid(config, "event", uid)
+    return event_summary(refreshed, refreshed.collection_name)
+
+
 def update_remote_task(config, uid: str, updates: dict[str, Any]) -> dict[str, Any]:
     item = _find_remote_by_uid(config, "task", uid)
     calendar = _calendar_from_resource(item.resource)
     updated_calendar = update_task_calendar(calendar, uid, updates)
+    item.resource.data = updated_calendar.to_ical().decode("utf-8")
+    save = getattr(item.resource, "save", None)
+    if not callable(save):
+        raise SyncFailureError("python-caldav resource does not support save")
+    save()
+    refreshed = _find_remote_by_uid(config, "task", uid)
+    return task_summary(refreshed, refreshed.collection_name)
+
+
+def trim_remote_task_recurrence(config, uid: str, before_date: date) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "task", uid)
+    calendar = _calendar_from_resource(item.resource)
+    updated_calendar = trim_recurrence_calendar(calendar, uid, "VTODO", before_date)
     item.resource.data = updated_calendar.to_ical().decode("utf-8")
     save = getattr(item.resource, "save", None)
     if not callable(save):

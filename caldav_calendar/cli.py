@@ -34,6 +34,7 @@ from .vdir import (
     overwrite_ics,
     task_summary,
     delete_ics,
+    trim_recurrence,
     update_event,
     update_task,
     write_new_ics,
@@ -262,6 +263,33 @@ def cmd_event_delete(args: argparse.Namespace) -> int:
     return emit({"ok": True, "operation": "event.delete", "dry_run": False, "uid": args.uid, "deleted": before, "sync": sync_result})
 
 
+def cmd_event_recurrence_trim(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    before_date = date.fromisoformat(args.before_date)
+    if config.backend == "direct-caldav":
+        before = remote.get_event(config, args.uid)
+        if not before.get("recurrence"):
+            raise ValidationError("VEVENT has no recurrence rule to trim")
+        if dry_run:
+            return emit({"ok": True, "operation": "event.recurrence.trim", "dry_run": True, "uid": args.uid, "would_trim": {"before": before, "delete_from": before_date.isoformat()}})
+        updated = remote.trim_remote_event_recurrence(config, args.uid, before_date)
+        _audit(config, "event.recurrence.trim", {"uid": args.uid, "title": updated.get("title", ""), "delete_from": before_date.isoformat(), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "event.recurrence.trim", "dry_run": False, "uid": args.uid, "item": updated, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "updated directly on CalDAV server"}})
+    item = find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid)
+    before = event_summary(item)
+    if not before.get("recurrence"):
+        raise ValidationError("VEVENT has no recurrence rule to trim")
+    if dry_run:
+        return emit({"ok": True, "operation": "event.recurrence.trim", "dry_run": True, "uid": args.uid, "would_trim": {"before": before, "delete_from": before_date.isoformat()}})
+    calendar = trim_recurrence(item, "VEVENT", before_date)
+    overwrite_ics(item.path, calendar.to_ical())
+    sync_result = run_sync()
+    updated = event_summary(find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid))
+    _audit(config, "event.recurrence.trim", {"uid": args.uid, "title": updated.get("title", ""), "delete_from": before_date.isoformat(), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "event.recurrence.trim", "dry_run": False, "uid": args.uid, "item": updated, "sync": sync_result})
+
+
 def cmd_task_list(args: argparse.Namespace) -> int:
     config = load_config()
     if config.backend == "direct-caldav":
@@ -390,6 +418,33 @@ def cmd_task_delete(args: argparse.Namespace) -> int:
     return emit({"ok": True, "operation": "task.delete", "dry_run": False, "uid": args.uid, "deleted": before, "sync": sync_result})
 
 
+def cmd_task_recurrence_trim(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    before_date = date.fromisoformat(args.before_date)
+    if config.backend == "direct-caldav":
+        before = remote.get_task(config, args.uid)
+        if not before.get("recurrence"):
+            raise ValidationError("VTODO has no recurrence rule to trim")
+        if dry_run:
+            return emit({"ok": True, "operation": "task.recurrence.trim", "dry_run": True, "uid": args.uid, "would_trim": {"before": before, "delete_from": before_date.isoformat()}})
+        updated = remote.trim_remote_task_recurrence(config, args.uid, before_date)
+        _audit(config, "task.recurrence.trim", {"uid": args.uid, "title": updated.get("title", ""), "delete_from": before_date.isoformat(), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "task.recurrence.trim", "dry_run": False, "uid": args.uid, "item": updated, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "updated directly on CalDAV server"}})
+    item = find_by_uid(list(config.task_lists.values()), "VTODO", args.uid)
+    before = task_summary(item)
+    if not before.get("recurrence"):
+        raise ValidationError("VTODO has no recurrence rule to trim")
+    if dry_run:
+        return emit({"ok": True, "operation": "task.recurrence.trim", "dry_run": True, "uid": args.uid, "would_trim": {"before": before, "delete_from": before_date.isoformat()}})
+    calendar = trim_recurrence(item, "VTODO", before_date)
+    overwrite_ics(item.path, calendar.to_ical())
+    sync_result = run_sync()
+    updated = task_summary(find_by_uid(list(config.task_lists.values()), "VTODO", args.uid))
+    _audit(config, "task.recurrence.trim", {"uid": args.uid, "title": updated.get("title", ""), "delete_from": before_date.isoformat(), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "task.recurrence.trim", "dry_run": False, "uid": args.uid, "item": updated, "sync": sync_result})
+
+
 def cmd_task_done(args: argparse.Namespace) -> int:
     dry_run = _require_mode(args)
     config = load_config()
@@ -505,6 +560,14 @@ def build_parser() -> argparse.ArgumentParser:
     event_delete.add_argument("--dry-run", action="store_true")
     event_delete.add_argument("--confirm", action="store_true")
     event_delete.set_defaults(func=cmd_event_delete)
+    event_recurrence = event_sub.add_parser("recurrence")
+    event_recurrence_sub = event_recurrence.add_subparsers(dest="event_recurrence_command", required=True, parser_class=JsonArgumentParser)
+    event_recurrence_trim = event_recurrence_sub.add_parser("trim")
+    event_recurrence_trim.add_argument("--uid", required=True)
+    event_recurrence_trim.add_argument("--before-date", required=True)
+    event_recurrence_trim.add_argument("--dry-run", action="store_true")
+    event_recurrence_trim.add_argument("--confirm", action="store_true")
+    event_recurrence_trim.set_defaults(func=cmd_event_recurrence_trim)
 
     task = sub.add_parser("task")
     task_sub = task.add_subparsers(dest="task_command", required=True, parser_class=JsonArgumentParser)
@@ -532,6 +595,14 @@ def build_parser() -> argparse.ArgumentParser:
     task_delete.add_argument("--dry-run", action="store_true")
     task_delete.add_argument("--confirm", action="store_true")
     task_delete.set_defaults(func=cmd_task_delete)
+    task_recurrence = task_sub.add_parser("recurrence")
+    task_recurrence_sub = task_recurrence.add_subparsers(dest="task_recurrence_command", required=True, parser_class=JsonArgumentParser)
+    task_recurrence_trim = task_recurrence_sub.add_parser("trim")
+    task_recurrence_trim.add_argument("--uid", required=True)
+    task_recurrence_trim.add_argument("--before-date", required=True)
+    task_recurrence_trim.add_argument("--dry-run", action="store_true")
+    task_recurrence_trim.add_argument("--confirm", action="store_true")
+    task_recurrence_trim.set_defaults(func=cmd_task_recurrence_trim)
     task_done = task_sub.add_parser("done")
     task_done.add_argument("--uid", required=True)
     task_done.add_argument("--dry-run", action="store_true")

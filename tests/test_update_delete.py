@@ -102,6 +102,80 @@ def test_event_update_can_clear_recurrence_and_reminders(configured_env, tmp_pat
     assert event.walk("VALARM") == []
 
 
+def test_event_recurrence_trim_keeps_occurrences_before_date(configured_env, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    event_input = _write_json(
+        tmp_path / "event.json",
+        {
+            "calendar": "personal",
+            "title": "Weekly review",
+            "start": "2026-05-16T14:00:00",
+            "end": "2026-05-16T16:00:00",
+            "timezone": "Asia/Shanghai",
+            "recurrence": {"frequency": "weekly", "count": 3, "by_day": ["SA"]},
+        },
+    )
+    main(["event", "create", "--json-input", str(event_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+
+    code = main(["event", "recurrence", "trim", "--uid", created["uid"], "--before-date", "2026-05-30", "--confirm"])
+    output = json.loads(capsys.readouterr().out)
+    calendar = Calendar.from_ical(next(configured_env["events"].glob("*.ics")).read_bytes())
+    event = calendar.walk("VEVENT")[0]
+
+    assert code == 0
+    assert output["item"]["recurrence"] == "FREQ=WEEKLY;COUNT=2;BYDAY=SA"
+    assert event.get("rrule").to_ical().decode("utf-8") == "FREQ=WEEKLY;COUNT=2;BYDAY=SA"
+
+
+def test_task_recurrence_trim_keeps_occurrences_before_date(configured_env, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    task_input = _write_json(
+        tmp_path / "task.json",
+        {
+            "list": "Inbox",
+            "title": "Weekly task",
+            "due": "2026-05-16",
+            "timezone": "Asia/Shanghai",
+            "recurrence": {"frequency": "weekly", "count": 3, "by_day": ["SA"]},
+        },
+    )
+    main(["task", "create", "--json-input", str(task_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+
+    code = main(["task", "recurrence", "trim", "--uid", created["uid"], "--before-date", "2026-05-23", "--confirm"])
+    output = json.loads(capsys.readouterr().out)
+    calendar = Calendar.from_ical(next(configured_env["tasks"].glob("*.ics")).read_bytes())
+    todo = calendar.walk("VTODO")[0]
+
+    assert code == 0
+    assert output["item"]["recurrence"] == "FREQ=WEEKLY;COUNT=1;BYDAY=SA"
+    assert todo.get("rrule").to_ical().decode("utf-8") == "FREQ=WEEKLY;COUNT=1;BYDAY=SA"
+
+
+def test_task_recurrence_trim_rejects_removing_every_occurrence(configured_env, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    task_input = _write_json(
+        tmp_path / "task.json",
+        {
+            "list": "Inbox",
+            "title": "Weekly task",
+            "due": "2026-05-16",
+            "timezone": "Asia/Shanghai",
+            "recurrence": {"frequency": "weekly", "count": 3, "by_day": ["SA"]},
+        },
+    )
+    main(["task", "create", "--json-input", str(task_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+
+    code = main(["task", "recurrence", "trim", "--uid", created["uid"], "--before-date", "2026-05-16", "--confirm"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 2
+    assert output["ok"] is False
+    assert output["error"]["code"] == "VALIDATION_ERROR"
+
+
 def test_task_update_without_mode_requires_confirmation(configured_env, task_input, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
     main(["task", "create", "--json-input", str(task_input), "--confirm"])

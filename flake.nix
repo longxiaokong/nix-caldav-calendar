@@ -35,6 +35,7 @@
           pythonEnv = python.withPackages (ps: [
             ps.caldav
             ps.icalendar
+            ps.python-dateutil
           ]);
         in
         {
@@ -97,6 +98,7 @@
           pythonEnv = python.withPackages (ps: [
             ps.caldav
             ps.icalendar
+            ps.python-dateutil
             ps.pytest
           ]);
         in

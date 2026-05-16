@@ -155,6 +155,7 @@ Dry-run update/delete by UID:
 ```bash
 caldav-calendar event update --uid UID --json-input examples/event-update.json --dry-run
 caldav-calendar event delete --uid UID --dry-run
+caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --dry-run
 ```
 
 Confirmed update/delete by UID:
@@ -162,6 +163,7 @@ Confirmed update/delete by UID:
 ```bash
 caldav-calendar event update --uid UID --json-input examples/event-update.json --confirm
 caldav-calendar event delete --uid UID --confirm
+caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --confirm
 ```
 
 Event input:
@@ -193,6 +195,9 @@ Event input:
 
 Set `"recurrence": null` in update JSON to remove an existing repeat rule. Set
 `"reminders": null` in update JSON to remove all alarms.
+Use `event recurrence trim --before-date YYYY-MM-DD` to delete instances on
+that date and after it while keeping earlier instances. Use `event delete --uid`
+to delete the entire recurring series.
 
 ## Tasks
 
@@ -228,6 +233,7 @@ Dry-run update/delete by UID:
 ```bash
 caldav-calendar task update --uid UID --json-input examples/task-update.json --dry-run
 caldav-calendar task delete --uid UID --dry-run
+caldav-calendar task recurrence trim --uid UID --before-date 2026-05-30 --dry-run
 ```
 
 Confirmed update/delete by UID:
@@ -235,6 +241,7 @@ Confirmed update/delete by UID:
 ```bash
 caldav-calendar task update --uid UID --json-input examples/task-update.json --confirm
 caldav-calendar task delete --uid UID --confirm
+caldav-calendar task recurrence trim --uid UID --before-date 2026-05-30 --confirm
 ```
 
 Dry-run done:
@@ -271,6 +278,9 @@ Task input:
 ```
 
 Tasks support the same optional `recurrence` and `reminders` fields as events.
+Use `task recurrence trim --before-date YYYY-MM-DD` to delete recurring task
+instances on that date and after it while keeping earlier instances. Use
+`task delete --uid` to delete the entire recurring task series.
 
 ## Manual Debug Passthrough
 
