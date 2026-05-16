@@ -1,7 +1,7 @@
 ---
 name: caldav-calendar
 description: Agent-friendly CalDAV calendar events and VTODO tasks for Nextcloud and compatible providers. Uses JSON commands, local .ics vdirs, and vdirsyncer sync.
-metadata: {"clawdbot":{"emoji":"📅","os":["linux"],"requires":{"bins":["caldav-calendar"]},"install":[{"id":"nix-openclaw","kind":"nix","packages":["caldav-calendar"],"bins":["caldav-calendar"],"label":"Use the nix-openclaw caldav-calendar plugin"}]}}
+metadata: {"clawdbot":{"emoji":"📅","os":["linux","macos"],"requires":{"bins":["caldav-calendar"]},"install":[{"id":"nix-openclaw","kind":"nix","packages":["caldav-calendar"],"bins":["caldav-calendar"],"label":"Use the nix-openclaw caldav-calendar plugin"}]}}
 ---
 
 # CalDAV Calendar + Tasks
