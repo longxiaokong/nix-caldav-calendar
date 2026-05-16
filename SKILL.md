@@ -31,6 +31,8 @@ Use JSON-based commands only:
 - Use `task` commands for todos with due dates or completion state.
 - Use `caldav suggest-config` and `caldav write-config` for setup.
 - Use UID for get/done/update/delete style operations.
+- To handle requests by title, list relevant items, match the likely item, then
+  use its UID. If multiple items match, ask the user to choose.
 - Always run write operations with `--dry-run` first.
 - Only run write operations with `--confirm` after user confirmation.
 - After confirmed writes, sync and read back by UID.
@@ -146,6 +148,20 @@ caldav-calendar event create --json-input examples/event-create.json --confirm
 caldav-calendar event get --uid UID --json
 ```
 
+Dry-run update/delete by UID:
+
+```bash
+caldav-calendar event update --uid UID --json-input examples/event-update.json --dry-run
+caldav-calendar event delete --uid UID --dry-run
+```
+
+Confirmed update/delete by UID:
+
+```bash
+caldav-calendar event update --uid UID --json-input examples/event-update.json --confirm
+caldav-calendar event delete --uid UID --confirm
+```
+
 Event input:
 
 ```json
@@ -188,6 +204,20 @@ Confirmed create:
 ```bash
 caldav-calendar task create --json-input examples/task-create.json --confirm
 caldav-calendar task get --uid UID --json
+```
+
+Dry-run update/delete by UID:
+
+```bash
+caldav-calendar task update --uid UID --json-input examples/task-update.json --dry-run
+caldav-calendar task delete --uid UID --dry-run
+```
+
+Confirmed update/delete by UID:
+
+```bash
+caldav-calendar task update --uid UID --json-input examples/task-update.json --confirm
+caldav-calendar task delete --uid UID --confirm
 ```
 
 Dry-run done:

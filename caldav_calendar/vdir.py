@@ -69,6 +69,13 @@ def overwrite_ics(path: Path, ics_bytes: bytes) -> None:
         raise FilesystemWriteError(f"Failed to update .ics file: {exc}") from exc
 
 
+def delete_ics(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise FilesystemWriteError(f"Failed to delete .ics file: {exc}") from exc
+
+
 def _prop_text(component: Any, key: str, default: str = "") -> str:
     value = component.get(key)
     return str(value) if value is not None else default
@@ -121,6 +128,20 @@ def task_summary(item: VdirItem, list_name: str | None = None) -> dict[str, Any]
     }
 
 
+def _replace_prop(component: Any, key: str, value: Any) -> None:
+    if key in component:
+        del component[key]
+    component.add(key, value)
+
+
+def _remove_or_replace_text(component: Any, key: str, value: str) -> None:
+    if value == "":
+        if key in component:
+            del component[key]
+        return
+    _replace_prop(component, key, value)
+
+
 def event_overlaps(item: VdirItem, start: date, end: date) -> bool:
     event_start = _prop_dt(item.component, "dtstart")
     event_end = _prop_dt(item.component, "dtend") or event_start
@@ -147,3 +168,57 @@ def mark_task_done(item: VdirItem) -> Calendar:
             todo.add("completed", datetime.now(timezone.utc))
             return calendar
     raise NotFoundError(f"VTODO not found for UID: {_component_uid(item.component)}")
+
+
+def update_event_calendar(calendar: Calendar, uid: str, updates: dict[str, Any]) -> Calendar:
+    for event in calendar.walk("VEVENT"):
+        if _component_uid(event) == uid:
+            if "title" in updates:
+                _replace_prop(event, "summary", updates["title"])
+            if "start" in updates:
+                _replace_prop(event, "dtstart", updates["start"])
+            if "end" in updates:
+                _replace_prop(event, "dtend", updates["end"])
+            if "location" in updates:
+                _remove_or_replace_text(event, "location", updates["location"])
+            if "description" in updates:
+                _remove_or_replace_text(event, "description", updates["description"])
+            if "tags" in updates:
+                if updates["tags"]:
+                    _replace_prop(event, "categories", updates["tags"])
+                elif "categories" in event:
+                    del event["categories"]
+            _replace_prop(event, "last-modified", datetime.now(timezone.utc))
+            return calendar
+    raise NotFoundError(f"VEVENT not found for UID: {uid}")
+
+
+def update_event(item: VdirItem, updates: dict[str, Any]) -> Calendar:
+    return update_event_calendar(read_calendar(item.path), _component_uid(item.component), updates)
+
+
+def update_task_calendar(calendar: Calendar, uid: str, updates: dict[str, Any]) -> Calendar:
+    for todo in calendar.walk("VTODO"):
+        if _component_uid(todo) == uid:
+            if "title" in updates:
+                _replace_prop(todo, "summary", updates["title"])
+            if "due" in updates:
+                parsed_due = datetime.fromisoformat(updates["due"])
+                value = parsed_due.date() if "T" not in updates["due"] else parsed_due
+                _replace_prop(todo, "due", value)
+            if "priority" in updates:
+                _replace_prop(todo, "priority", updates["priority"])
+            if "description" in updates:
+                _remove_or_replace_text(todo, "description", updates["description"])
+            if "tags" in updates:
+                if updates["tags"]:
+                    _replace_prop(todo, "categories", updates["tags"])
+                elif "categories" in todo:
+                    del todo["categories"]
+            _replace_prop(todo, "last-modified", datetime.now(timezone.utc))
+            return calendar
+    raise NotFoundError(f"VTODO not found for UID: {uid}")
+
+
+def update_task(item: VdirItem, updates: dict[str, Any]) -> Calendar:
+    return update_task_calendar(read_calendar(item.path), _component_uid(item.component), updates)

@@ -21,7 +21,7 @@ from .errors import (
 )
 from .ics_event import build_event, event_to_bytes, new_uid as new_event_uid
 from .ics_task import build_task, new_uid as new_task_uid, task_to_bytes
-from .models import EventCreateInput, TaskCreateInput, load_json_file
+from .models import EventCreateInput, TaskCreateInput, load_json_file, validate_event_update, validate_task_update
 from .output import emit, emit_error, fail_unexpected
 from .sync import run_sync
 from . import remote
@@ -33,6 +33,9 @@ from .vdir import (
     mark_task_done,
     overwrite_ics,
     task_summary,
+    delete_ics,
+    update_event,
+    update_task,
     write_new_ics,
 )
 
@@ -216,6 +219,49 @@ def cmd_event_create(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_event_update(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    updates = validate_event_update(load_json_file(args.json_input), config.timezone)
+    if config.backend == "direct-caldav":
+        before = remote.get_event(config, args.uid)
+        if dry_run:
+            return emit({"ok": True, "operation": "event.update", "dry_run": True, "uid": args.uid, "would_update": {"before": before, "updates": _jsonable_updates(updates)}})
+        updated = remote.update_remote_event(config, args.uid, updates)
+        _audit(config, "event.update", {"uid": args.uid, "title": updated.get("title", ""), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "event.update", "dry_run": False, "uid": args.uid, "item": updated, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "updated directly on CalDAV server"}})
+    item = find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid)
+    before = event_summary(item)
+    if dry_run:
+        return emit({"ok": True, "operation": "event.update", "dry_run": True, "uid": args.uid, "would_update": {"before": before, "updates": _jsonable_updates(updates)}})
+    calendar = update_event(item, updates)
+    overwrite_ics(item.path, calendar.to_ical())
+    sync_result = run_sync()
+    updated = event_summary(find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid))
+    _audit(config, "event.update", {"uid": args.uid, "title": updated.get("title", ""), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "event.update", "dry_run": False, "uid": args.uid, "item": updated, "sync": sync_result})
+
+
+def cmd_event_delete(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    if config.backend == "direct-caldav":
+        before = remote.get_event(config, args.uid)
+        if dry_run:
+            return emit({"ok": True, "operation": "event.delete", "dry_run": True, "uid": args.uid, "would_delete": before})
+        deleted = remote.delete_remote_event(config, args.uid)
+        _audit(config, "event.delete", {"uid": args.uid, "title": deleted.get("title", ""), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "event.delete", "dry_run": False, "uid": args.uid, "deleted": deleted, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "deleted directly on CalDAV server"}})
+    item = find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid)
+    before = event_summary(item)
+    if dry_run:
+        return emit({"ok": True, "operation": "event.delete", "dry_run": True, "uid": args.uid, "would_delete": before})
+    delete_ics(item.path)
+    sync_result = run_sync()
+    _audit(config, "event.delete", {"uid": args.uid, "title": before.get("title", ""), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "event.delete", "dry_run": False, "uid": args.uid, "deleted": before, "sync": sync_result})
+
+
 def cmd_task_list(args: argparse.Namespace) -> int:
     config = load_config()
     if config.backend == "direct-caldav":
@@ -281,6 +327,61 @@ def cmd_task_create(args: argparse.Namespace) -> int:
             "sync": sync_result,
         }
     )
+
+
+def _jsonable_updates(updates: dict[str, Any]) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    for key, value in updates.items():
+        if key == "timezone":
+            continue
+        if isinstance(value, datetime):
+            output[key] = value.isoformat()
+        else:
+            output[key] = value
+    return output
+
+
+def cmd_task_update(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    updates = validate_task_update(load_json_file(args.json_input), config.timezone)
+    if config.backend == "direct-caldav":
+        before = remote.get_task(config, args.uid)
+        if dry_run:
+            return emit({"ok": True, "operation": "task.update", "dry_run": True, "uid": args.uid, "would_update": {"before": before, "updates": _jsonable_updates(updates)}})
+        updated = remote.update_remote_task(config, args.uid, updates)
+        _audit(config, "task.update", {"uid": args.uid, "title": updated.get("title", ""), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "task.update", "dry_run": False, "uid": args.uid, "item": updated, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "updated directly on CalDAV server"}})
+    item = find_by_uid(list(config.task_lists.values()), "VTODO", args.uid)
+    before = task_summary(item)
+    if dry_run:
+        return emit({"ok": True, "operation": "task.update", "dry_run": True, "uid": args.uid, "would_update": {"before": before, "updates": _jsonable_updates(updates)}})
+    calendar = update_task(item, updates)
+    overwrite_ics(item.path, calendar.to_ical())
+    sync_result = run_sync()
+    updated = task_summary(find_by_uid(list(config.task_lists.values()), "VTODO", args.uid))
+    _audit(config, "task.update", {"uid": args.uid, "title": updated.get("title", ""), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "task.update", "dry_run": False, "uid": args.uid, "item": updated, "sync": sync_result})
+
+
+def cmd_task_delete(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    if config.backend == "direct-caldav":
+        before = remote.get_task(config, args.uid)
+        if dry_run:
+            return emit({"ok": True, "operation": "task.delete", "dry_run": True, "uid": args.uid, "would_delete": before})
+        deleted = remote.delete_remote_task(config, args.uid)
+        _audit(config, "task.delete", {"uid": args.uid, "title": deleted.get("title", ""), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "task.delete", "dry_run": False, "uid": args.uid, "deleted": deleted, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "deleted directly on CalDAV server"}})
+    item = find_by_uid(list(config.task_lists.values()), "VTODO", args.uid)
+    before = task_summary(item)
+    if dry_run:
+        return emit({"ok": True, "operation": "task.delete", "dry_run": True, "uid": args.uid, "would_delete": before})
+    delete_ics(item.path)
+    sync_result = run_sync()
+    _audit(config, "task.delete", {"uid": args.uid, "title": before.get("title", ""), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "task.delete", "dry_run": False, "uid": args.uid, "deleted": before, "sync": sync_result})
 
 
 def cmd_task_done(args: argparse.Namespace) -> int:
@@ -387,6 +488,17 @@ def build_parser() -> argparse.ArgumentParser:
     event_create.add_argument("--dry-run", action="store_true")
     event_create.add_argument("--confirm", action="store_true")
     event_create.set_defaults(func=cmd_event_create)
+    event_update = event_sub.add_parser("update")
+    event_update.add_argument("--uid", required=True)
+    event_update.add_argument("--json-input", required=True)
+    event_update.add_argument("--dry-run", action="store_true")
+    event_update.add_argument("--confirm", action="store_true")
+    event_update.set_defaults(func=cmd_event_update)
+    event_delete = event_sub.add_parser("delete")
+    event_delete.add_argument("--uid", required=True)
+    event_delete.add_argument("--dry-run", action="store_true")
+    event_delete.add_argument("--confirm", action="store_true")
+    event_delete.set_defaults(func=cmd_event_delete)
 
     task = sub.add_parser("task")
     task_sub = task.add_subparsers(dest="task_command", required=True, parser_class=JsonArgumentParser)
@@ -403,6 +515,17 @@ def build_parser() -> argparse.ArgumentParser:
     task_create.add_argument("--dry-run", action="store_true")
     task_create.add_argument("--confirm", action="store_true")
     task_create.set_defaults(func=cmd_task_create)
+    task_update = task_sub.add_parser("update")
+    task_update.add_argument("--uid", required=True)
+    task_update.add_argument("--json-input", required=True)
+    task_update.add_argument("--dry-run", action="store_true")
+    task_update.add_argument("--confirm", action="store_true")
+    task_update.set_defaults(func=cmd_task_update)
+    task_delete = task_sub.add_parser("delete")
+    task_delete.add_argument("--uid", required=True)
+    task_delete.add_argument("--dry-run", action="store_true")
+    task_delete.add_argument("--confirm", action="store_true")
+    task_delete.set_defaults(func=cmd_task_delete)
     task_done = task_sub.add_parser("done")
     task_done.add_argument("--uid", required=True)
     task_done.add_argument("--dry-run", action="store_true")

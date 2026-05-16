@@ -56,6 +56,75 @@ def _parse_datetime(value: str, timezone: str) -> datetime:
     return parsed
 
 
+def parse_optional_datetime(data: dict, field_name: str, timezone: str) -> datetime | None:
+    value = data.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError(f"Field must be a non-empty ISO datetime string: {field_name}")
+    return _parse_datetime(value, timezone)
+
+
+def validate_update_fields(data: dict, allowed: set[str]) -> dict:
+    unknown = set(data) - allowed
+    if unknown:
+        raise ValidationError(f"Unknown update field(s): {', '.join(sorted(unknown))}")
+    if not data:
+        raise ValidationError("Update JSON must include at least one field")
+    if set(data) == {"timezone"}:
+        raise ValidationError("Update JSON must include at least one mutable field")
+    return data
+
+
+def validate_event_update(data: dict, default_timezone: str) -> dict:
+    allowed = {"title", "start", "end", "timezone", "location", "description", "tags"}
+    validate_update_fields(data, allowed)
+    timezone = _optional_str(data, "timezone", default_timezone) or default_timezone
+    output = dict(data)
+    if "title" in output:
+        output["title"] = _require_str(output, "title")
+    if "start" in output:
+        output["start"] = parse_optional_datetime(output, "start", timezone)
+    if "end" in output:
+        output["end"] = parse_optional_datetime(output, "end", timezone)
+    if "start" in output and "end" in output and output["end"] <= output["start"]:
+        raise ValidationError("Event end must be after start")
+    if "location" in output:
+        output["location"] = _optional_str(output, "location")
+    if "description" in output:
+        output["description"] = _optional_str(output, "description")
+    if "tags" in output:
+        output["tags"] = _optional_tags(output)
+    output["timezone"] = timezone
+    return output
+
+
+def validate_task_update(data: dict, default_timezone: str) -> dict:
+    allowed = {"title", "due", "timezone", "priority", "description", "tags"}
+    validate_update_fields(data, allowed)
+    timezone = _optional_str(data, "timezone", default_timezone) or default_timezone
+    output = dict(data)
+    if "title" in output:
+        output["title"] = _require_str(output, "title")
+    if "due" in output:
+        due = _require_str(output, "due")
+        try:
+            datetime.fromisoformat(due)
+        except ValueError as exc:
+            raise ValidationError(f"Invalid ISO date or datetime: {due}") from exc
+        output["due"] = due
+    if "priority" in output:
+        priority_raw = output["priority"]
+        if not isinstance(priority_raw, int) or priority_raw < 0 or priority_raw > 9:
+            raise ValidationError("Field priority must be an integer from 0 to 9")
+    if "description" in output:
+        output["description"] = _optional_str(output, "description")
+    if "tags" in output:
+        output["tags"] = _optional_tags(output)
+    output["timezone"] = timezone
+    return output
+
+
 @dataclass(frozen=True)
 class EventCreateInput:
     calendar: str | None

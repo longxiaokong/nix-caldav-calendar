@@ -104,12 +104,20 @@ All agent-facing commands are non-interactive and emit JSON:
 - `caldav-calendar event get --uid UID --json`
 - `caldav-calendar event create --json-input FILE --dry-run`
 - `caldav-calendar event create --json-input FILE --confirm`
+- `caldav-calendar event update --uid UID --json-input FILE --dry-run`
+- `caldav-calendar event update --uid UID --json-input FILE --confirm`
+- `caldav-calendar event delete --uid UID --dry-run`
+- `caldav-calendar event delete --uid UID --confirm`
 - `caldav-calendar task list --status open|done|all --json`
 - `caldav-calendar task get --uid UID --json`
 - `caldav-calendar task create --json-input FILE --dry-run`
 - `caldav-calendar task create --json-input FILE --confirm`
+- `caldav-calendar task update --uid UID --json-input FILE --dry-run`
+- `caldav-calendar task update --uid UID --json-input FILE --confirm`
 - `caldav-calendar task done --uid UID --dry-run`
 - `caldav-calendar task done --uid UID --confirm`
+- `caldav-calendar task delete --uid UID --dry-run`
+- `caldav-calendar task delete --uid UID --confirm`
 
 Write commands must use exactly one of `--dry-run` or `--confirm`. Without one,
 the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
@@ -117,6 +125,11 @@ the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
 Agents must not hand-edit `caldav-calendar.json`. Use `suggest-config` to
 classify collections and `write-config` to write the selected config. If
 `needs_user_choice` is true, ask the user which event/task collection to use.
+
+For natural-language requests like "move the review task" or "delete the summer
+camp task", agents should list the relevant date/status range, identify the
+probable item, and then use UID-based update/delete. If more than one item
+matches, ask the user to choose. Never update or delete by title alone.
 
 ## Manual passthrough
 

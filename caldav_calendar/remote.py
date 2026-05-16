@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from icalendar import Calendar
 
 from .errors import ConfigError, NotFoundError, SyncFailureError, ValidationError
-from .vdir import event_overlaps, event_summary, task_summary
+from .vdir import event_overlaps, event_summary, task_summary, update_event_calendar, update_task_calendar
 
 
 @dataclass(frozen=True)
@@ -297,3 +297,49 @@ def complete_task(config, uid: str) -> dict[str, Any]:
         raise SyncFailureError("python-caldav resource does not support save")
     save()
     return {**before, "status": "COMPLETED"}
+
+
+def update_remote_event(config, uid: str, updates: dict[str, Any]) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "event", uid)
+    calendar = _calendar_from_resource(item.resource)
+    updated_calendar = update_event_calendar(calendar, uid, updates)
+    item.resource.data = updated_calendar.to_ical().decode("utf-8")
+    save = getattr(item.resource, "save", None)
+    if not callable(save):
+        raise SyncFailureError("python-caldav resource does not support save")
+    save()
+    refreshed = _find_remote_by_uid(config, "event", uid)
+    return event_summary(refreshed, refreshed.collection_name)
+
+
+def update_remote_task(config, uid: str, updates: dict[str, Any]) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "task", uid)
+    calendar = _calendar_from_resource(item.resource)
+    updated_calendar = update_task_calendar(calendar, uid, updates)
+    item.resource.data = updated_calendar.to_ical().decode("utf-8")
+    save = getattr(item.resource, "save", None)
+    if not callable(save):
+        raise SyncFailureError("python-caldav resource does not support save")
+    save()
+    refreshed = _find_remote_by_uid(config, "task", uid)
+    return task_summary(refreshed, refreshed.collection_name)
+
+
+def delete_remote_event(config, uid: str) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "event", uid)
+    before = event_summary(item, item.collection_name)
+    delete = getattr(item.resource, "delete", None)
+    if not callable(delete):
+        raise SyncFailureError("python-caldav resource does not support delete")
+    delete()
+    return before
+
+
+def delete_remote_task(config, uid: str) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "task", uid)
+    before = task_summary(item, item.collection_name)
+    delete = getattr(item.resource, "delete", None)
+    if not callable(delete):
+        raise SyncFailureError("python-caldav resource does not support delete")
+    delete()
+    return before

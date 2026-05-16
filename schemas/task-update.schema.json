@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "caldav-calendar task update input",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "due": { "type": "string" },
+    "timezone": { "type": "string" },
+    "priority": { "type": "integer", "minimum": 0, "maximum": 9 },
+    "description": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

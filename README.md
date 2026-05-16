@@ -231,6 +231,10 @@ caldav-calendar event list --from 2026-05-16 --to 2026-05-20 --json
 caldav-calendar event get --uid UID --json
 caldav-calendar event create --json-input examples/event-create.json --dry-run
 caldav-calendar event create --json-input examples/event-create.json --confirm
+caldav-calendar event update --uid UID --json-input examples/event-update.json --dry-run
+caldav-calendar event update --uid UID --json-input examples/event-update.json --confirm
+caldav-calendar event delete --uid UID --dry-run
+caldav-calendar event delete --uid UID --confirm
 ```
 
 Event input:
@@ -257,8 +261,12 @@ caldav-calendar task list --status all --json
 caldav-calendar task get --uid UID --json
 caldav-calendar task create --json-input examples/task-create.json --dry-run
 caldav-calendar task create --json-input examples/task-create.json --confirm
+caldav-calendar task update --uid UID --json-input examples/task-update.json --dry-run
+caldav-calendar task update --uid UID --json-input examples/task-update.json --confirm
 caldav-calendar task done --uid UID --dry-run
 caldav-calendar task done --uid UID --confirm
+caldav-calendar task delete --uid UID --dry-run
+caldav-calendar task delete --uid UID --confirm
 ```
 
 Task input:
@@ -282,9 +290,14 @@ Task input:
 - Without either flag, the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
 - `--dry-run` validates and returns the item that would be written.
 - `--confirm` performs the actual write.
-- Update/done operations use UID only. Do not modify by title.
+- Update/done/delete operations use UID only. Do not modify by title.
 - Config writes must use `caldav write-config --dry-run` before `--confirm`.
 - Credentials are read from `CALDAV_CALENDAR_AUTH_FILE` at runtime.
+
+When the user says "move the review task" or "delete the summer camp task", the
+agent should first use `task list` or `event list` to find plausible matches,
+ask for confirmation when ambiguous, and then call update/delete by UID. The CLI
+intentionally does not update or delete by title.
 
 Exit codes:
 
