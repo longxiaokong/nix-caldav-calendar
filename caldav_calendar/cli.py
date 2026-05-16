@@ -71,6 +71,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "CALDAV_CALENDAR_AUTH_FILE",
             "CALDAV_CALENDAR_DATA_DIR",
             "CALDAV_CALENDAR_DEFAULT_TIMEZONE",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
         ]
     }
     payload: dict[str, Any] = {
@@ -134,7 +136,7 @@ def cmd_caldav_write_config(args: argparse.Namespace) -> int:
         raise ValidationError("Config must include non-empty event_collections")
     if not isinstance(data.get("task_collections"), dict) or not data["task_collections"]:
         raise ValidationError("Config must include non-empty task_collections")
-    target = config.config_dir / "caldav-calendar.json"
+    target = config.config_dir / "config.json"
     payload = {
         "ok": True,
         "operation": "caldav.write-config",
@@ -627,8 +629,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if os.environ.get("CALDAV_CALENDAR_CONFIG_DIR") and not os.environ.get("XDG_CONFIG_HOME"):
-        os.environ["XDG_CONFIG_HOME"] = os.environ["CALDAV_CALENDAR_CONFIG_DIR"]
     if argv and argv[0] in {"discover", "list", "search", "new", "edit", "todo", "todoman", "khal", "vdirsyncer"}:
         return cmd_passthrough(argv)
     parser = build_parser()

@@ -50,22 +50,34 @@ def _resolve_data_path(raw: str, data_dir: Path) -> Path:
 
 def _config_candidates(config_dir: Path) -> list[Path]:
     return [
-        config_dir / "caldav-calendar.json",
         config_dir / "config.json",
+        config_dir / "caldav-calendar.json",
     ]
 
 
-def load_config(require_files: bool = True) -> RuntimeConfig:
+def _config_dir_from_env() -> Path:
     config_dir_raw = os.environ.get("CALDAV_CALENDAR_CONFIG_DIR")
-    if not config_dir_raw:
-        raise ConfigError("CALDAV_CALENDAR_CONFIG_DIR is required")
+    if config_dir_raw:
+        return Path(config_dir_raw).expanduser()
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        return Path(xdg_config_home).expanduser() / "caldav-calendar"
+    raise ConfigError("CALDAV_CALENDAR_CONFIG_DIR or XDG_CONFIG_HOME is required")
 
+
+def _data_dir_from_env() -> Path:
     data_dir_raw = os.environ.get("CALDAV_CALENDAR_DATA_DIR")
-    if not data_dir_raw:
-        raise ConfigError("CALDAV_CALENDAR_DATA_DIR is required")
+    if data_dir_raw:
+        return Path(data_dir_raw).expanduser()
+    xdg_data_home = os.environ.get("XDG_DATA_HOME")
+    if xdg_data_home:
+        return Path(xdg_data_home).expanduser() / "caldav-calendar"
+    raise ConfigError("CALDAV_CALENDAR_DATA_DIR or XDG_DATA_HOME is required")
 
-    config_dir = Path(config_dir_raw).expanduser()
-    data_dir = Path(data_dir_raw).expanduser()
+
+def load_config(require_files: bool = True) -> RuntimeConfig:
+    config_dir = _config_dir_from_env()
+    data_dir = _data_dir_from_env()
     auth_raw = os.environ.get("CALDAV_CALENDAR_AUTH_FILE")
     if not auth_raw:
         raise ConfigError("CALDAV_CALENDAR_AUTH_FILE is required")
@@ -91,7 +103,7 @@ def load_config(require_files: bool = True) -> RuntimeConfig:
         or ""
     )
     if not timezone:
-        raise ConfigError("CALDAV_CALENDAR_DEFAULT_TIMEZONE or config timezone is required")
+        raise ConfigError("Config setting timezone is required")
 
     try:
         ZoneInfo(timezone)

@@ -75,9 +75,6 @@
           ];
           requiredEnv = [
             "CALDAV_CALENDAR_AUTH_FILE"
-            "CALDAV_CALENDAR_CONFIG_DIR"
-            "CALDAV_CALENDAR_DATA_DIR"
-            "CALDAV_CALENDAR_DEFAULT_TIMEZONE"
           ];
         };
       };

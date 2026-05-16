@@ -23,17 +23,16 @@ Agent automation uses the Python CLI. Prefer `backend = "direct-caldav"`:
 
 Do not automate interactive editors or TUI screens.
 
-## Required environment
+## Plugin config
 
-Set these values through `customPlugins.<plugin>.config.env`:
+Use `customPlugins.<plugin>.config.env` only for secret/runtime paths:
 
-- `CALDAV_CALENDAR_CONFIG_DIR`: directory containing `caldav-calendar.json`
-  or `config.json`, plus optional `vdirsyncer`, `khal`, and `todoman` configs.
 - `CALDAV_CALENDAR_AUTH_FILE`: runtime secret file path. Do not put this file
   in the Nix store.
-- `CALDAV_CALENDAR_DATA_DIR`: local data directory for vdirs and audit logs.
-- `CALDAV_CALENDAR_DEFAULT_TIMEZONE`: default timezone, such as
-  `Asia/Shanghai`.
+
+Use `customPlugins.<plugin>.config.settings` for typed CalDAV configuration.
+OpenClaw renders these settings to `config.json` in the first state directory,
+`.config/caldav-calendar`.
 
 Example placeholder:
 
@@ -43,16 +42,20 @@ customPlugins = [
     source = "github:owner/nix-caldav-calendar?rev=<commit>&narHash=<narHash>";
     config = {
       env = {
-        CALDAV_CALENDAR_CONFIG_DIR = "/var/lib/openclaw/caldav-calendar/config";
         CALDAV_CALENDAR_AUTH_FILE = "/run/agenix/caldav-calendar-auth";
-        CALDAV_CALENDAR_DATA_DIR = "/var/lib/openclaw/caldav-calendar/data";
-        CALDAV_CALENDAR_DEFAULT_TIMEZONE = "Asia/Shanghai";
       };
       settings = {
         backend = "direct-caldav";
         provider = "nextcloud";
+        timezone = "Asia/Shanghai";
         base_url = "https://cloud.example.com/remote.php/dav/calendars/USERNAME/";
         username = "USERNAME";
+        event_collections = {
+          personal = "personal";
+        };
+        task_collections = {
+          Inbox = "tasks";
+        };
         default_event_calendar = "personal";
         default_task_list = "Inbox";
       };
@@ -66,10 +69,15 @@ under secret-managed paths such as `/run/agenix/...` or `/run/secrets/...`.
 
 ## Python config
 
-The CLI reads:
+The CLI reads config from:
 
-- `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`
-- `$CALDAV_CALENDAR_CONFIG_DIR/config.json`
+- `$XDG_CONFIG_HOME/caldav-calendar/config.json`
+- `$CALDAV_CALENDAR_CONFIG_DIR/config.json` when that override is set
+- legacy `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`
+
+`CALDAV_CALENDAR_DATA_DIR` is optional. Without it, `XDG_DATA_HOME` must be set,
+and audit logs plus legacy vdir relative paths use
+`$XDG_DATA_HOME/caldav-calendar`.
 
 Example:
 
@@ -126,7 +134,7 @@ All agent-facing commands are non-interactive and emit JSON:
 Write commands must use exactly one of `--dry-run` or `--confirm`. Without one,
 the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
 
-Agents must not hand-edit `caldav-calendar.json`. Use `suggest-config` to
+Agents must not hand-edit CalDAV config files. Use `suggest-config` to
 classify collections and `write-config` to write the selected config. If
 `needs_user_choice` is true, ask the user which event/task collection to use.
 
@@ -164,8 +172,10 @@ Agents must not drive editors, TUIs, or interactive prompts.
 Confirmed writes append JSON lines to:
 
 ```text
-$CALDAV_CALENDAR_DATA_DIR/audit.log.jsonl
+$XDG_DATA_HOME/caldav-calendar/audit.log.jsonl
 ```
+
+If `CALDAV_CALENDAR_DATA_DIR` is set, it overrides that data directory.
 
 ## CI
 

@@ -52,9 +52,6 @@ The flake exports:
   ];
   requiredEnv = [
     "CALDAV_CALENDAR_AUTH_FILE"
-    "CALDAV_CALENDAR_CONFIG_DIR"
-    "CALDAV_CALENDAR_DATA_DIR"
-    "CALDAV_CALENDAR_DEFAULT_TIMEZONE"
   ];
 }
 ```
@@ -73,16 +70,20 @@ Example:
         source = "github:OWNER/nix-caldav-calendar?rev=COMMIT&narHash=sha256-...";
         config = {
           env = {
-            CALDAV_CALENDAR_CONFIG_DIR = "/var/lib/openclaw/caldav-calendar/config";
             CALDAV_CALENDAR_AUTH_FILE = "/run/agenix/caldav-calendar-auth";
-            CALDAV_CALENDAR_DATA_DIR = "/var/lib/openclaw/caldav-calendar/data";
-            CALDAV_CALENDAR_DEFAULT_TIMEZONE = "Asia/Shanghai";
           };
           settings = {
             backend = "direct-caldav";
             provider = "nextcloud";
+            timezone = "Asia/Shanghai";
             base_url = "https://cloud.example.com/remote.php/dav/calendars/USERNAME/";
             username = "USERNAME";
+            event_collections = {
+              personal = "personal";
+            };
+            task_collections = {
+              Inbox = "tasks";
+            };
             default_event_calendar = "personal";
             default_task_list = "Inbox";
           };
@@ -93,21 +94,30 @@ Example:
 }
 ```
 
+OpenClaw renders `config.settings` to `config.json` in the first state
+directory, `.config/caldav-calendar`. Keep normal typed values in `settings`;
+keep only the secret file path in `env`.
+
 ## Environment Variables
 
-- `CALDAV_CALENDAR_CONFIG_DIR`: directory containing `caldav-calendar.json` or
-  `config.json`, and optionally `vdirsyncer`, `khal`, and `todoman` configs.
 - `CALDAV_CALENDAR_AUTH_FILE`: runtime secret file path. This should point to
   something like `/run/agenix/caldav-calendar-auth` or
   `/run/secrets/caldav-calendar-auth`.
-- `CALDAV_CALENDAR_DATA_DIR`: local data directory for `audit.log.jsonl` and
-  legacy vdir mode state.
-- `CALDAV_CALENDAR_DEFAULT_TIMEZONE`: default timezone, for example
-  `Asia/Shanghai`.
+- `CALDAV_CALENDAR_CONFIG_DIR`: optional override for the config directory.
+  Without it, `XDG_CONFIG_HOME` must be set and the CLI reads
+  `$XDG_CONFIG_HOME/caldav-calendar/config.json`.
+- `CALDAV_CALENDAR_DATA_DIR`: optional override for audit logs and legacy vdir
+  state. Without it, `XDG_DATA_HOME` must be set and the CLI uses
+  `$XDG_DATA_HOME/caldav-calendar`.
+- `CALDAV_CALENDAR_DEFAULT_TIMEZONE`: optional local override. Prefer the
+  `timezone` setting in plugin config.
 
 ## Direct CalDAV Config
 
-Create `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`:
+OpenClaw normally creates `.config/caldav-calendar/config.json` from
+`config.settings`. For local/manual testing, create `config.json` in the
+directory selected by `CALDAV_CALENDAR_CONFIG_DIR` or
+`$XDG_CONFIG_HOME/caldav-calendar`:
 
 ```json
 {
@@ -159,7 +169,7 @@ caldav-calendar caldav write-config --json-input suggested.json --dry-run
 caldav-calendar caldav write-config --json-input suggested.json --confirm
 ```
 
-Agents should not hand-edit `caldav-calendar.json`.
+Agents should not hand-edit CalDAV config files.
 
 ## Legacy vdir Config
 
@@ -356,8 +366,10 @@ Exit codes:
 Confirmed writes append JSON lines to:
 
 ```text
-$CALDAV_CALENDAR_DATA_DIR/audit.log.jsonl
+$XDG_DATA_HOME/caldav-calendar/audit.log.jsonl
 ```
+
+If `CALDAV_CALENDAR_DATA_DIR` is set, it overrides that data directory.
 
 ## Manual Debug Passthrough
 

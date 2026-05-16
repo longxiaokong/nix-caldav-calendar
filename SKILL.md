@@ -39,22 +39,27 @@ Use JSON-based commands only:
 - Only run write operations with `--confirm` after user confirmation.
 - After confirmed writes, sync and read back by UID.
 
-## Required Env
+## Plugin Config
 
-The host must provide:
+The host must provide this env var:
 
-- `CALDAV_CALENDAR_CONFIG_DIR`
 - `CALDAV_CALENDAR_AUTH_FILE`
-- `CALDAV_CALENDAR_DATA_DIR`
-- `CALDAV_CALENDAR_DEFAULT_TIMEZONE`
 
 Credentials must live in runtime secret paths such as `/run/agenix/...` or
 `/run/secrets/...`, never in the Nix store.
 
+Use OpenClaw `settings` for typed config such as `backend`, `timezone`,
+`base_url`, `username`, `event_collections`, and `task_collections`. OpenClaw
+renders settings to `.config/caldav-calendar/config.json`.
+
 The Python CLI reads config from:
 
-- `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`
-- `$CALDAV_CALENDAR_CONFIG_DIR/config.json`
+- `$XDG_CONFIG_HOME/caldav-calendar/config.json`
+- `$CALDAV_CALENDAR_CONFIG_DIR/config.json` when that override is set
+- legacy `$CALDAV_CALENDAR_CONFIG_DIR/caldav-calendar.json`
+
+The host must set either `XDG_CONFIG_HOME` or `CALDAV_CALENDAR_CONFIG_DIR`, and
+either `XDG_DATA_HOME` or `CALDAV_CALENDAR_DATA_DIR`.
 
 Example:
 
@@ -120,7 +125,7 @@ caldav-calendar caldav write-config --json-input suggested.json --dry-run
 caldav-calendar caldav write-config --json-input suggested.json --confirm
 ```
 
-Never hand-edit `caldav-calendar.json` as an agent action when the setup helper
+Never hand-edit CalDAV config files as an agent action when the setup helper
 can write it.
 
 ## Events
