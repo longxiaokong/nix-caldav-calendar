@@ -330,14 +330,20 @@ def cmd_task_create(args: argparse.Namespace) -> int:
 
 
 def _jsonable_updates(updates: dict[str, Any]) -> dict[str, Any]:
+    def jsonable(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {key: jsonable(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [jsonable(item) for item in value]
+        return value
+
     output: dict[str, Any] = {}
     for key, value in updates.items():
         if key == "timezone":
             continue
-        if isinstance(value, datetime):
-            output[key] = value.isoformat()
-        else:
-            output[key] = value
+        output[key] = jsonable(value)
     return output
 
 

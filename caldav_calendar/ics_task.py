@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
-from icalendar import Calendar, Todo
+from icalendar import Alarm, Calendar, Todo
 
 from .models import TaskCreateInput
 
@@ -32,6 +32,14 @@ def build_task(input_data: TaskCreateInput, uid: str | None = None) -> Calendar:
     todo.add("description", input_data.description)
     if input_data.tags:
         todo.add("categories", input_data.tags)
+    if input_data.recurrence:
+        todo.add("rrule", input_data.recurrence)
+    for reminder in input_data.reminders:
+        alarm = Alarm()
+        alarm.add("action", reminder["action"])
+        alarm.add("description", reminder["description"])
+        alarm.add("trigger", -timedelta(minutes=reminder["minutes_before"]))
+        todo.add_component(alarm)
 
     calendar = Calendar()
     calendar.add("prodid", PRODID)

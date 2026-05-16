@@ -5,5 +5,17 @@
   "timezone": "Asia/Shanghai",
   "location": "",
   "description": "Review updated summer camp knowledge points",
-  "tags": ["summer-camp", "study"]
+  "tags": ["summer-camp", "study"],
+  "recurrence": {
+    "frequency": "weekly",
+    "interval": 1,
+    "count": 3,
+    "by_day": ["SA"]
+  },
+  "reminders": [
+    {
+      "minutes_before": 15,
+      "description": "Review updated summer camp materials"
+    }
+  ]
 }

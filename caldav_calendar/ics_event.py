@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from icalendar import Calendar, Event
+from icalendar import Alarm, Calendar, Event
 
 from .models import EventCreateInput
 
@@ -26,6 +26,14 @@ def build_event(input_data: EventCreateInput, uid: str | None = None) -> Calenda
         event.add("location", input_data.location)
     if input_data.tags:
         event.add("categories", input_data.tags)
+    if input_data.recurrence:
+        event.add("rrule", input_data.recurrence)
+    for reminder in input_data.reminders:
+        alarm = Alarm()
+        alarm.add("action", reminder["action"])
+        alarm.add("description", reminder["description"])
+        alarm.add("trigger", -timedelta(minutes=reminder["minutes_before"]))
+        event.add_component(alarm)
 
     calendar = Calendar()
     calendar.add("prodid", PRODID)

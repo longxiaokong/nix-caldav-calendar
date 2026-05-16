@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from icalendar import Calendar
+from icalendar import Alarm, Calendar
 
 from .errors import ConflictError, FilesystemWriteError, NotFoundError
 
@@ -98,6 +98,34 @@ def _iso(value: Any) -> str | None:
     return str(value)
 
 
+def _recurrence_summary(component: Any) -> str:
+    value = component.get("rrule")
+    if value is None:
+        return ""
+    to_ical = getattr(value, "to_ical", None)
+    if callable(to_ical):
+        return to_ical().decode("utf-8")
+    return str(value)
+
+
+def _reminder_summary(component: Any) -> list[dict[str, Any]]:
+    output = []
+    for alarm in component.walk("VALARM"):
+        trigger = alarm.get("trigger")
+        trigger_value = getattr(trigger, "dt", None)
+        minutes_before = None
+        if isinstance(trigger_value, timedelta):
+            minutes_before = int(abs(trigger_value.total_seconds()) // 60)
+        output.append(
+            {
+                "action": _prop_text(alarm, "action", "DISPLAY"),
+                "description": _prop_text(alarm, "description"),
+                "minutes_before": minutes_before,
+            }
+        )
+    return output
+
+
 def event_summary(item: VdirItem, calendar_name: str | None = None) -> dict[str, Any]:
     component = item.component
     return {
@@ -109,6 +137,8 @@ def event_summary(item: VdirItem, calendar_name: str | None = None) -> dict[str,
         "end": _iso(_prop_dt(component, "dtend")),
         "location": _prop_text(component, "location"),
         "description": _prop_text(component, "description"),
+        "recurrence": _recurrence_summary(component),
+        "reminders": _reminder_summary(component),
         "path": str(item.path),
     }
 
@@ -124,6 +154,8 @@ def task_summary(item: VdirItem, list_name: str | None = None) -> dict[str, Any]
         "status": _prop_text(component, "status", "NEEDS-ACTION"),
         "priority": int(component.get("priority", 0) or 0),
         "description": _prop_text(component, "description"),
+        "recurrence": _recurrence_summary(component),
+        "reminders": _reminder_summary(component),
         "path": str(item.path),
     }
 
@@ -140,6 +172,23 @@ def _remove_or_replace_text(component: Any, key: str, value: str) -> None:
             del component[key]
         return
     _replace_prop(component, key, value)
+
+
+def _replace_recurrence(component: Any, value: dict | None) -> None:
+    if "rrule" in component:
+        del component["rrule"]
+    if value is not None:
+        component.add("rrule", value)
+
+
+def _replace_reminders(component: Any, reminders: list[dict]) -> None:
+    component.subcomponents = [sub for sub in component.subcomponents if sub.name != "VALARM"]
+    for reminder in reminders:
+        alarm = Alarm()
+        alarm.add("action", reminder["action"])
+        alarm.add("description", reminder["description"])
+        alarm.add("trigger", -timedelta(minutes=reminder["minutes_before"]))
+        component.add_component(alarm)
 
 
 def event_overlaps(item: VdirItem, start: date, end: date) -> bool:
@@ -188,6 +237,10 @@ def update_event_calendar(calendar: Calendar, uid: str, updates: dict[str, Any])
                     _replace_prop(event, "categories", updates["tags"])
                 elif "categories" in event:
                     del event["categories"]
+            if "recurrence" in updates:
+                _replace_recurrence(event, updates["recurrence"])
+            if "reminders" in updates:
+                _replace_reminders(event, updates["reminders"])
             _replace_prop(event, "last-modified", datetime.now(timezone.utc))
             return calendar
     raise NotFoundError(f"VEVENT not found for UID: {uid}")
@@ -215,6 +268,10 @@ def update_task_calendar(calendar: Calendar, uid: str, updates: dict[str, Any]) 
                     _replace_prop(todo, "categories", updates["tags"])
                 elif "categories" in todo:
                     del todo["categories"]
+            if "recurrence" in updates:
+                _replace_recurrence(todo, updates["recurrence"])
+            if "reminders" in updates:
+                _replace_reminders(todo, updates["reminders"])
             _replace_prop(todo, "last-modified", datetime.now(timezone.utc))
             return calendar
     raise NotFoundError(f"VTODO not found for UID: {uid}")

@@ -4,5 +4,11 @@
   "timezone": "Asia/Shanghai",
   "priority": 4,
   "description": "Collect and review updated application materials",
-  "tags": ["summer-camp", "application"]
+  "tags": ["summer-camp", "application"],
+  "reminders": [
+    {
+      "minutes_before": 720,
+      "description": "Review updated application materials"
+    }
+  ]
 }

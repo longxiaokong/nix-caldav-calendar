@@ -131,6 +131,13 @@ camp task", agents should list the relevant date/status range, identify the
 probable item, and then use UID-based update/delete. If more than one item
 matches, ask the user to choose. Never update or delete by title alone.
 
+Use structured JSON for repeat rules and alarms. `recurrence` maps to `RRULE`
+and supports `frequency`, `interval`, `count`, `until`, and `by_day`.
+`reminders` maps to `VALARM` and uses `minutes_before` plus optional
+`description`; only display alarms are supported. In update JSON,
+`"recurrence": null` clears an existing repeat rule and `"reminders": null`
+clears all alarms.
+
 ## Manual passthrough
 
 These commands are available for humans and debugging, not agent automation:

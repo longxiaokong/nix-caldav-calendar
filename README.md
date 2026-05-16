@@ -22,12 +22,14 @@ This branch is an MVP focused on non-interactive automation:
 - JSON output for agent-facing commands
 - dry-run/confirm safety for writes
 - direct CalDAV create/list/get/done flows through `python-caldav`
+- UID-based update/delete for events and tasks
+- structured recurrence (`RRULE`) and reminders (`VALARM`)
 - remote collection discovery and classification
 - legacy local vdir read/write still available with `backend = "vdir"`
 - tests that use temporary local vdirs or mocks and do not require a real Nextcloud server
 
-Advanced editing, deletion, recurrence, attendees, alarms, and full provider
-config generation are intentionally out of scope for this MVP.
+Attendees, exceptions to recurring series, and full provider config generation
+are intentionally out of scope for this MVP.
 
 ## Nix Contract
 
@@ -248,9 +250,24 @@ Event input:
   "timezone": "Asia/Shanghai",
   "location": "",
   "description": "Review summer camp knowledge points",
-  "tags": ["summer-camp", "study"]
+  "tags": ["summer-camp", "study"],
+  "recurrence": {
+    "frequency": "weekly",
+    "interval": 1,
+    "count": 4,
+    "by_day": ["SA"]
+  },
+  "reminders": [
+    {
+      "minutes_before": 30,
+      "description": "Review summer camp materials"
+    }
+  ]
 }
 ```
+
+For update JSON, set `"recurrence": null` to remove an existing repeat rule and
+`"reminders": null` to remove all alarms.
 
 ### Tasks
 
@@ -279,9 +296,18 @@ Task input:
   "timezone": "Asia/Shanghai",
   "priority": 5,
   "description": "Collect transcript, CV, personal statement, project experience, and recommendation letter materials",
-  "tags": ["summer-camp", "application"]
+  "tags": ["summer-camp", "application"],
+  "reminders": [
+    {
+      "minutes_before": 1440,
+      "description": "Prepare summer camp application materials"
+    }
+  ]
 }
 ```
+
+Tasks support the same optional `recurrence` and `reminders` fields as events.
+Reminder triggers are relative and use `minutes_before`.
 
 ## Safety Rules
 

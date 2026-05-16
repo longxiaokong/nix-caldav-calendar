@@ -5,5 +5,11 @@
   "timezone": "Asia/Shanghai",
   "priority": 5,
   "description": "Collect transcript, CV, personal statement, project experience, and recommendation letter materials",
-  "tags": ["summer-camp", "application"]
+  "tags": ["summer-camp", "application"],
+  "reminders": [
+    {
+      "minutes_before": 1440,
+      "description": "Prepare summer camp application materials"
+    }
+  ]
 }

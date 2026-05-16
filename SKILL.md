@@ -31,6 +31,8 @@ Use JSON-based commands only:
 - Use `task` commands for todos with due dates or completion state.
 - Use `caldav suggest-config` and `caldav write-config` for setup.
 - Use UID for get/done/update/delete style operations.
+- Use structured `recurrence` and `reminders` fields; do not hand-compose raw
+  `.ics` text.
 - To handle requests by title, list relevant items, match the likely item, then
   use its UID. If multiple items match, ask the user to choose.
 - Always run write operations with `--dry-run` first.
@@ -173,9 +175,24 @@ Event input:
   "timezone": "Asia/Shanghai",
   "location": "",
   "description": "Review summer camp knowledge points",
-  "tags": ["summer-camp", "study"]
+  "tags": ["summer-camp", "study"],
+  "recurrence": {
+    "frequency": "weekly",
+    "interval": 1,
+    "count": 4,
+    "by_day": ["SA"]
+  },
+  "reminders": [
+    {
+      "minutes_before": 30,
+      "description": "Review summer camp materials"
+    }
+  ]
 }
 ```
+
+Set `"recurrence": null` in update JSON to remove an existing repeat rule. Set
+`"reminders": null` in update JSON to remove all alarms.
 
 ## Tasks
 
@@ -243,9 +260,17 @@ Task input:
   "timezone": "Asia/Shanghai",
   "priority": 5,
   "description": "Collect transcript, CV, personal statement, project experience, and recommendation letter materials",
-  "tags": ["summer-camp", "application"]
+  "tags": ["summer-camp", "application"],
+  "reminders": [
+    {
+      "minutes_before": 1440,
+      "description": "Prepare summer camp application materials"
+    }
+  ]
 }
 ```
+
+Tasks support the same optional `recurrence` and `reminders` fields as events.
 
 ## Manual Debug Passthrough
 

@@ -48,6 +48,60 @@ def test_task_update_confirm_changes_vtodo(configured_env, task_input, tmp_path,
     assert int(todo.get("priority")) == 4
 
 
+def test_event_update_replaces_recurrence_and_reminders(configured_env, event_input, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    main(["event", "create", "--json-input", str(event_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+    update_input = _write_json(
+        tmp_path / "event-update.json",
+        {
+            "recurrence": {"frequency": "weekly", "count": 2, "by_day": ["SA"]},
+            "reminders": [{"minutes_before": 15, "description": "Review"}],
+        },
+    )
+
+    code = main(["event", "update", "--uid", created["uid"], "--json-input", str(update_input), "--confirm"])
+    output = json.loads(capsys.readouterr().out)
+    calendar = Calendar.from_ical(next(configured_env["events"].glob("*.ics")).read_bytes())
+    event = calendar.walk("VEVENT")[0]
+
+    assert code == 0
+    assert output["item"]["recurrence"] == "FREQ=WEEKLY;COUNT=2;BYDAY=SA"
+    assert output["item"]["reminders"][0]["minutes_before"] == 15
+    assert event.get("rrule").to_ical().decode("utf-8") == "FREQ=WEEKLY;COUNT=2;BYDAY=SA"
+    assert event.walk("VALARM")[0].get("trigger").to_ical().decode("utf-8") == "-PT15M"
+
+
+def test_event_update_can_clear_recurrence_and_reminders(configured_env, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    event_input = _write_json(
+        tmp_path / "event.json",
+        {
+            "calendar": "personal",
+            "title": "Weekly review",
+            "start": "2026-05-16T14:00:00",
+            "end": "2026-05-16T16:00:00",
+            "timezone": "Asia/Shanghai",
+            "recurrence": {"frequency": "weekly", "count": 2},
+            "reminders": [{"minutes_before": 15, "description": "Review"}],
+        },
+    )
+    main(["event", "create", "--json-input", str(event_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+    update_input = _write_json(tmp_path / "event-update.json", {"recurrence": None, "reminders": None})
+
+    code = main(["event", "update", "--uid", created["uid"], "--json-input", str(update_input), "--confirm"])
+    output = json.loads(capsys.readouterr().out)
+    calendar = Calendar.from_ical(next(configured_env["events"].glob("*.ics")).read_bytes())
+    event = calendar.walk("VEVENT")[0]
+
+    assert code == 0
+    assert output["item"]["recurrence"] == ""
+    assert output["item"]["reminders"] == []
+    assert event.get("rrule") is None
+    assert event.walk("VALARM") == []
+
+
 def test_task_update_without_mode_requires_confirmation(configured_env, task_input, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
     main(["task", "create", "--json-input", str(task_input), "--confirm"])
