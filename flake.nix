@@ -60,7 +60,10 @@
       openclawPlugin = system: {
         name = pluginName;
         skills = [
-          ./.
+          (builtins.path {
+            name = pluginName;
+            path = ./.;
+          })
         ];
         packages = [
           self.packages.${system}.default
