@@ -60,10 +60,7 @@
       openclawPlugin = system: {
         name = pluginName;
         skills = [
-          (builtins.path {
-            name = pluginName;
-            path = ./.;
-          })
+          ./skills/caldav-calendar
         ];
         packages = [
           self.packages.${system}.default
