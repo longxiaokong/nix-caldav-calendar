@@ -117,12 +117,12 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def cmd_caldav_discover(args: argparse.Namespace) -> int:
-    config = load_config()
+    config = load_config(collections_required=False)
     return emit({"ok": True, "operation": "caldav.discover", "collections": remote.discover(config)})
 
 
 def cmd_caldav_suggest_config(args: argparse.Namespace) -> int:
-    config = load_config()
+    config = load_config(collections_required=False)
     suggestion = remote.suggest_config(config)
     return emit({"ok": True, "operation": "caldav.suggest-config", **suggestion})
 

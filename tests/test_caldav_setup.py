@@ -68,6 +68,57 @@ def test_suggest_config_requires_choice_when_multiple_event_candidates(configure
     assert output["recommended_config"]["event_collections"] == {}
 
 
+def test_suggest_config_works_before_collections_are_configured(configured_env, monkeypatch, capsys):
+    (configured_env["config_dir"] / "config.json").write_text(
+        json.dumps(
+            {
+                "backend": "direct-caldav",
+                "timezone": "Asia/Shanghai",
+                "base_url": "https://cloud.example.com/remote.php/dav/calendars/user/",
+                "username": "user",
+                "provider": "nextcloud",
+            }
+        )
+    )
+    monkeypatch.setattr(
+        remote,
+        "discover",
+        lambda config: [
+            {"slug": "personal", "display_name": "Personal", "href": "https://example/personal/", "supports": ["VEVENT"]},
+            {"slug": "tasks", "display_name": "Tasks", "href": "https://example/tasks/", "supports": ["VTODO"]},
+        ],
+    )
+
+    code = main(["caldav", "suggest-config", "--json"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert output["ok"] is True
+    assert output["recommended_config"]["event_collections"] == {"personal": "personal"}
+    assert output["recommended_config"]["task_collections"] == {"Inbox": "tasks"}
+
+
+def test_event_list_still_requires_collections(configured_env, capsys):
+    (configured_env["config_dir"] / "config.json").write_text(
+        json.dumps(
+            {
+                "backend": "direct-caldav",
+                "timezone": "Asia/Shanghai",
+                "base_url": "https://cloud.example.com/remote.php/dav/calendars/user/",
+                "username": "user",
+            }
+        )
+    )
+
+    code = main(["event", "list", "--from", "2026-05-16", "--to", "2026-05-20", "--json"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 3
+    assert output["ok"] is False
+    assert output["error"]["code"] == "CONFIG_ERROR"
+    assert "event_collections" in output["error"]["message"]
+
+
 def test_write_config_dry_run_does_not_write(configured_env, tmp_path, capsys):
     target = configured_env["config_dir"] / "config.json"
     target.write_text("{}")

@@ -108,6 +108,11 @@ Use this to classify collections. Only use `VEVENT` collections for events and
 `VTODO` collections for tasks. Do not write to contact birthdays or other
 generated/special collections.
 
+`discover` and `suggest-config` intentionally work before
+`event_collections` and `task_collections` are configured. They only require
+`backend`, `timezone`, `base_url`, `username`, and `CALDAV_CALENDAR_AUTH_FILE`.
+Normal event/task operations still require collection mappings.
+
 Suggest setup config:
 
 ```bash

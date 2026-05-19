@@ -145,6 +145,12 @@ right values:
 caldav-calendar caldav discover --json
 ```
 
+Bootstrap note: `caldav discover` and `caldav suggest-config` only require
+`backend`, `timezone`, `base_url`, `username`, and `CALDAV_CALENDAR_AUTH_FILE`.
+They intentionally work before `event_collections` and `task_collections` are
+configured. Event/task read-write commands still require those collection
+mappings.
+
 Use only collections that advertise the matching component:
 
 - `VEVENT` collections are valid event calendars

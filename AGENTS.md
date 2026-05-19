@@ -139,6 +139,10 @@ the CLI returns JSON error code `CONFIRMATION_REQUIRED`.
 Agents must not hand-edit CalDAV config files. Use `suggest-config` to
 classify collections and `write-config` to write the selected config. If
 `needs_user_choice` is true, ask the user which event/task collection to use.
+`caldav discover` and `caldav suggest-config` are allowed to run before
+`event_collections` and `task_collections` are configured; they only need
+`backend`, `timezone`, `base_url`, `username`, and `CALDAV_CALENDAR_AUTH_FILE`.
+Normal event/task operations still require collection mappings.
 
 For natural-language requests like "move the review task" or "delete the summer
 camp task", agents should list the relevant date/status range, identify the

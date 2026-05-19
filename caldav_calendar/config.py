@@ -75,7 +75,7 @@ def _data_dir_from_env() -> Path:
     raise ConfigError("CALDAV_CALENDAR_DATA_DIR or XDG_DATA_HOME is required")
 
 
-def load_config(require_files: bool = True) -> RuntimeConfig:
+def load_config(require_files: bool = True, collections_required: bool = True) -> RuntimeConfig:
     config_dir = _config_dir_from_env()
     data_dir = _data_dir_from_env()
     auth_raw = os.environ.get("CALDAV_CALENDAR_AUTH_FILE")
@@ -130,9 +130,9 @@ def load_config(require_files: bool = True) -> RuntimeConfig:
             raise ConfigError("Direct CalDAV backend requires base_url")
         if not username:
             raise ConfigError("Direct CalDAV backend requires username")
-        if not raw_event_collections:
+        if collections_required and not raw_event_collections:
             raise ConfigError("Direct CalDAV backend requires event_collections")
-        if not raw_task_collections:
+        if collections_required and not raw_task_collections:
             raise ConfigError("Direct CalDAV backend requires task_collections")
 
     event_calendars = {
