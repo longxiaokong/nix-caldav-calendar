@@ -11,6 +11,7 @@ from .errors import ConfigError, NotFoundError, SyncFailureError, ValidationErro
 from .vdir import (
     event_overlaps,
     event_summary,
+    override_event_occurrence_calendar,
     task_summary,
     trim_recurrence_calendar,
     update_event_calendar,
@@ -248,12 +249,19 @@ def _find_remote_by_uid(config, kind: str, uid: str) -> RemoteItem:
     component_name = "VEVENT" if kind == "event" else "VTODO"
     mapping = config.event_collections if kind == "event" else config.task_collections
     names = list(mapping) or [config.default_event_calendar if kind == "event" else config.default_task_list]
+    first_match: RemoteItem | None = None
     for name in names:
         collection, collection_name = _collection(config, kind, name)
         for resource in _resources(collection, component_name):
             for component in _resource_components(resource, component_name):
                 if str(component.get("uid", "")) == uid:
-                    return RemoteItem(resource=resource, component=component, collection_name=collection_name)
+                    item = RemoteItem(resource=resource, component=component, collection_name=collection_name)
+                    if kind != "event" or component.get("recurrence-id") is None:
+                        return item
+                    if first_match is None:
+                        first_match = item
+    if first_match is not None:
+        return first_match
     raise NotFoundError(f"{component_name} not found for UID: {uid}")
 
 
@@ -323,6 +331,19 @@ def trim_remote_event_recurrence(config, uid: str, before_date: date) -> dict[st
     item = _find_remote_by_uid(config, "event", uid)
     calendar = _calendar_from_resource(item.resource)
     updated_calendar = trim_recurrence_calendar(calendar, uid, "VEVENT", before_date)
+    item.resource.data = updated_calendar.to_ical().decode("utf-8")
+    save = getattr(item.resource, "save", None)
+    if not callable(save):
+        raise SyncFailureError("python-caldav resource does not support save")
+    save()
+    refreshed = _find_remote_by_uid(config, "event", uid)
+    return event_summary(refreshed, refreshed.collection_name)
+
+
+def override_remote_event_occurrence(config, uid: str, occurrence_date: date, updates: dict[str, Any]) -> dict[str, Any]:
+    item = _find_remote_by_uid(config, "event", uid)
+    calendar = _calendar_from_resource(item.resource)
+    updated_calendar = override_event_occurrence_calendar(calendar, uid, occurrence_date, updates)
     item.resource.data = updated_calendar.to_ical().decode("utf-8")
     save = getattr(item.resource, "save", None)
     if not callable(save):

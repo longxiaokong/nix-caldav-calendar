@@ -1,0 +1,14 @@
+{
+  "title": "Shifted weekly review",
+  "start": "2026-05-23T15:00:00",
+  "end": "2026-05-23T17:00:00",
+  "timezone": "Asia/Shanghai",
+  "location": "Library",
+  "description": "One-off shifted review session",
+  "reminders": [
+    {
+      "minutes_before": 15,
+      "description": "Shifted weekly review"
+    }
+  ]
+}

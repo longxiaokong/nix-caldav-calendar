@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from icalendar import Alarm, Calendar
+from icalendar import Alarm, Calendar, Event
 
 from dateutil.rrule import rrulestr
 
@@ -133,6 +133,7 @@ def event_summary(item: VdirItem, calendar_name: str | None = None) -> dict[str,
     return {
         "kind": "event",
         "uid": _prop_text(component, "uid"),
+        "recurrence_id": _iso(_prop_dt(component, "recurrence-id")),
         "calendar": calendar_name,
         "title": _prop_text(component, "summary"),
         "start": _iso(_prop_dt(component, "dtstart")),
@@ -241,6 +242,88 @@ def trim_recurrence_calendar(calendar: Calendar, uid: str, component_name: str, 
 
 def trim_recurrence(item: VdirItem, component_name: str, before_date: date) -> Calendar:
     return trim_recurrence_calendar(read_calendar(item.path), _component_uid(item.component), component_name, before_date)
+
+
+def _find_recurring_event_master(calendar: Calendar, uid: str) -> Any:
+    for event in calendar.walk("VEVENT"):
+        if _component_uid(event) == uid and event.get("recurrence-id") is None:
+            if event.get("rrule") is None:
+                raise ValidationError("VEVENT has no recurrence rule to override")
+            return event
+    raise NotFoundError(f"VEVENT not found for UID: {uid}")
+
+
+def _event_occurrence_start(master: Any, occurrence_date: date) -> datetime:
+    anchor = _prop_dt(master, "dtstart")
+    if anchor is None:
+        raise ValidationError("VEVENT recurrence override requires DTSTART")
+    if not isinstance(anchor, datetime):
+        raise ValidationError("VEVENT recurrence override requires date-time DTSTART")
+    rrule_value = master.get("rrule")
+    rule_text = f"RRULE:{rrule_value.to_ical().decode('utf-8')}"
+    rule = rrulestr(rule_text, dtstart=anchor)
+    day_start = datetime.combine(occurrence_date, time.min, tzinfo=anchor.tzinfo)
+    day_end = day_start + timedelta(days=1)
+    matches = rule.between(day_start, day_end, inc=True)
+    if len(matches) != 1:
+        raise ValidationError(f"Expected exactly one occurrence on {occurrence_date.isoformat()}, found {len(matches)}")
+    return matches[0]
+
+
+def _copy_text_prop(source: Any, target: Any, key: str) -> None:
+    value = source.get(key)
+    if value is not None:
+        target.add(key, value)
+
+
+def _replace_or_copy_text(source: Any, target: Any, updates: dict[str, Any], update_key: str, ics_key: str) -> None:
+    if update_key in updates:
+        _remove_or_replace_text(target, ics_key, updates[update_key])
+    else:
+        _copy_text_prop(source, target, ics_key)
+
+
+def override_event_occurrence_calendar(calendar: Calendar, uid: str, occurrence_date: date, updates: dict[str, Any]) -> Calendar:
+    master = _find_recurring_event_master(calendar, uid)
+    recurrence_id = _event_occurrence_start(master, occurrence_date)
+    calendar.subcomponents = [
+        component
+        for component in calendar.subcomponents
+        if not (
+            component.name == "VEVENT"
+            and _component_uid(component) == uid
+            and _prop_dt(component, "recurrence-id") == recurrence_id
+        )
+    ]
+    event = Event()
+    event.add("uid", uid)
+    event.add("recurrence-id", recurrence_id)
+    event.add("dtstamp", datetime.now(timezone.utc))
+    event.add("dtstart", updates["start"])
+    event.add("dtend", updates["end"])
+    if "title" in updates:
+        event.add("summary", updates["title"])
+    else:
+        _copy_text_prop(master, event, "summary")
+    _replace_or_copy_text(master, event, updates, "location", "location")
+    _replace_or_copy_text(master, event, updates, "description", "description")
+    if "tags" in updates:
+        if updates["tags"]:
+            event.add("categories", updates["tags"])
+    elif "categories" in master:
+        event.add("categories", master.get("categories"))
+    if "reminders" in updates:
+        _replace_reminders(event, updates["reminders"])
+    else:
+        for alarm in master.walk("VALARM"):
+            event.add_component(alarm)
+    event.add("last-modified", datetime.now(timezone.utc))
+    calendar.add_component(event)
+    return calendar
+
+
+def override_event_occurrence(item: VdirItem, occurrence_date: date, updates: dict[str, Any]) -> Calendar:
+    return override_event_occurrence_calendar(read_calendar(item.path), _component_uid(item.component), occurrence_date, updates)
 
 
 def _replace_reminders(component: Any, reminders: list[dict]) -> None:

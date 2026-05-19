@@ -173,6 +173,31 @@ def validate_event_update(data: dict, default_timezone: str) -> dict:
     return output
 
 
+def validate_event_override(data: dict, default_timezone: str) -> dict:
+    allowed = {"title", "start", "end", "timezone", "location", "description", "tags", "reminders"}
+    validate_update_fields(data, allowed)
+    timezone = _optional_str(data, "timezone", default_timezone) or default_timezone
+    output = dict(data)
+    if "start" not in output or "end" not in output:
+        raise ValidationError("Event override JSON must include start and end")
+    output["start"] = parse_optional_datetime(output, "start", timezone)
+    output["end"] = parse_optional_datetime(output, "end", timezone)
+    if output["end"] <= output["start"]:
+        raise ValidationError("Event override end must be after start")
+    if "title" in output:
+        output["title"] = _require_str(output, "title")
+    if "location" in output:
+        output["location"] = _optional_str(output, "location")
+    if "description" in output:
+        output["description"] = _optional_str(output, "description")
+    if "tags" in output:
+        output["tags"] = _optional_tags(output)
+    if "reminders" in output:
+        output["reminders"] = _optional_reminders(output)
+    output["timezone"] = timezone
+    return output
+
+
 def validate_task_update(data: dict, default_timezone: str) -> dict:
     allowed = {"title", "due", "timezone", "priority", "description", "tags", "recurrence", "reminders"}
     validate_update_fields(data, allowed)

@@ -21,7 +21,7 @@ from .errors import (
 )
 from .ics_event import build_event, event_to_bytes, new_uid as new_event_uid
 from .ics_task import build_task, new_uid as new_task_uid, task_to_bytes
-from .models import EventCreateInput, TaskCreateInput, load_json_file, validate_event_update, validate_task_update
+from .models import EventCreateInput, TaskCreateInput, load_json_file, validate_event_override, validate_event_update, validate_task_update
 from .output import emit, emit_error, fail_unexpected
 from .sync import run_sync
 from . import remote
@@ -34,6 +34,7 @@ from .vdir import (
     overwrite_ics,
     task_summary,
     delete_ics,
+    override_event_occurrence,
     trim_recurrence,
     update_event,
     update_task,
@@ -290,6 +291,44 @@ def cmd_event_recurrence_trim(args: argparse.Namespace) -> int:
     updated = event_summary(find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid))
     _audit(config, "event.recurrence.trim", {"uid": args.uid, "title": updated.get("title", ""), "delete_from": before_date.isoformat(), "dry_run": False, "result": "ok"})
     return emit({"ok": True, "operation": "event.recurrence.trim", "dry_run": False, "uid": args.uid, "item": updated, "sync": sync_result})
+
+
+def cmd_event_recurrence_override(args: argparse.Namespace) -> int:
+    dry_run = _require_mode(args)
+    config = load_config()
+    occurrence_date = date.fromisoformat(args.occurrence_date)
+    updates = validate_event_override(load_json_file(args.json_input), config.timezone)
+    if config.backend == "direct-caldav":
+        before = remote.get_event(config, args.uid)
+        if not before.get("recurrence"):
+            raise ValidationError("VEVENT has no recurrence rule to override")
+        payload = {
+            "before": before,
+            "occurrence_date": occurrence_date.isoformat(),
+            "updates": _jsonable_updates(updates),
+        }
+        if dry_run:
+            return emit({"ok": True, "operation": "event.recurrence.override", "dry_run": True, "uid": args.uid, "would_override": payload})
+        updated = remote.override_remote_event_occurrence(config, args.uid, occurrence_date, updates)
+        _audit(config, "event.recurrence.override", {"uid": args.uid, "title": updated.get("title", ""), "occurrence_date": occurrence_date.isoformat(), "dry_run": False, "result": "ok"})
+        return emit({"ok": True, "operation": "event.recurrence.override", "dry_run": False, "uid": args.uid, "occurrence_date": occurrence_date.isoformat(), "item": updated, "sync": {"backend": "direct-caldav", "skipped": True, "reason": "updated directly on CalDAV server"}})
+    item = find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid)
+    before = event_summary(item)
+    if not before.get("recurrence"):
+        raise ValidationError("VEVENT has no recurrence rule to override")
+    payload = {
+        "before": before,
+        "occurrence_date": occurrence_date.isoformat(),
+        "updates": _jsonable_updates(updates),
+    }
+    if dry_run:
+        return emit({"ok": True, "operation": "event.recurrence.override", "dry_run": True, "uid": args.uid, "would_override": payload})
+    calendar = override_event_occurrence(item, occurrence_date, updates)
+    overwrite_ics(item.path, calendar.to_ical())
+    sync_result = run_sync()
+    updated = event_summary(find_by_uid(list(config.event_calendars.values()), "VEVENT", args.uid))
+    _audit(config, "event.recurrence.override", {"uid": args.uid, "title": updated.get("title", ""), "occurrence_date": occurrence_date.isoformat(), "dry_run": False, "result": "ok"})
+    return emit({"ok": True, "operation": "event.recurrence.override", "dry_run": False, "uid": args.uid, "occurrence_date": occurrence_date.isoformat(), "item": updated, "sync": sync_result})
 
 
 def cmd_task_list(args: argparse.Namespace) -> int:
@@ -570,6 +609,13 @@ def build_parser() -> argparse.ArgumentParser:
     event_recurrence_trim.add_argument("--dry-run", action="store_true")
     event_recurrence_trim.add_argument("--confirm", action="store_true")
     event_recurrence_trim.set_defaults(func=cmd_event_recurrence_trim)
+    event_recurrence_override = event_recurrence_sub.add_parser("override")
+    event_recurrence_override.add_argument("--uid", required=True)
+    event_recurrence_override.add_argument("--occurrence-date", required=True)
+    event_recurrence_override.add_argument("--json-input", required=True)
+    event_recurrence_override.add_argument("--dry-run", action="store_true")
+    event_recurrence_override.add_argument("--confirm", action="store_true")
+    event_recurrence_override.set_defaults(func=cmd_event_recurrence_override)
 
     task = sub.add_parser("task")
     task_sub = task.add_subparsers(dest="task_command", required=True, parser_class=JsonArgumentParser)

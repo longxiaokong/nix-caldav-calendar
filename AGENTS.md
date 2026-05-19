@@ -118,6 +118,8 @@ All agent-facing commands are non-interactive and emit JSON:
 - `caldav-calendar event delete --uid UID --confirm`
 - `caldav-calendar event recurrence trim --uid UID --before-date YYYY-MM-DD --dry-run`
 - `caldav-calendar event recurrence trim --uid UID --before-date YYYY-MM-DD --confirm`
+- `caldav-calendar event recurrence override --uid UID --occurrence-date YYYY-MM-DD --json-input FILE --dry-run`
+- `caldav-calendar event recurrence override --uid UID --occurrence-date YYYY-MM-DD --json-input FILE --confirm`
 - `caldav-calendar task list --status open|done|all --json`
 - `caldav-calendar task get --uid UID --json`
 - `caldav-calendar task create --json-input FILE --dry-run`
@@ -154,6 +156,12 @@ To delete part of a recurring series, use `recurrence trim`. Its `--before-date`
 keeps instances before that date and deletes instances on that date and after it
 by rewriting the repeat rule to a shorter `COUNT`. To delete the whole recurring
 series, use `event delete --uid` or `task delete --uid`.
+
+To change one event instance in a recurring series, use `event recurrence
+override`. Its JSON input must include the new `start` and `end`, and may include
+`title`, `location`, `description`, `tags`, and `reminders`. The CLI writes a
+same-UID exception event with `RECURRENCE-ID`. Recurring task instance overrides
+are not supported.
 
 ## Manual passthrough
 

@@ -128,6 +128,92 @@ def test_event_recurrence_trim_keeps_occurrences_before_date(configured_env, tmp
     assert event.get("rrule").to_ical().decode("utf-8") == "FREQ=WEEKLY;COUNT=2;BYDAY=SA"
 
 
+def test_event_recurrence_override_adds_exception_event(configured_env, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    event_input = _write_json(
+        tmp_path / "event.json",
+        {
+            "calendar": "personal",
+            "title": "Weekly review",
+            "start": "2026-05-16T14:00:00",
+            "end": "2026-05-16T16:00:00",
+            "timezone": "Asia/Shanghai",
+            "recurrence": {"frequency": "weekly", "count": 3, "by_day": ["SA"]},
+        },
+    )
+    main(["event", "create", "--json-input", str(event_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+    override_input = _write_json(
+        tmp_path / "event-override.json",
+        {
+            "start": "2026-05-23T15:00:00",
+            "end": "2026-05-23T17:00:00",
+            "title": "Shifted weekly review",
+            "location": "Library",
+        },
+    )
+
+    code = main(
+        [
+            "event",
+            "recurrence",
+            "override",
+            "--uid",
+            created["uid"],
+            "--occurrence-date",
+            "2026-05-23",
+            "--json-input",
+            str(override_input),
+            "--confirm",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+    calendar = Calendar.from_ical(next(configured_env["events"].glob("*.ics")).read_bytes())
+    events = calendar.walk("VEVENT")
+    overrides = [event for event in events if event.get("recurrence-id") is not None]
+
+    assert code == 0
+    assert output["ok"] is True
+    assert len(events) == 2
+    assert len(overrides) == 1
+    assert str(overrides[0].get("summary")) == "Shifted weekly review"
+    assert str(overrides[0].get("location")) == "Library"
+    assert overrides[0].get("dtstart").dt.isoformat() == "2026-05-23T15:00:00+08:00"
+    assert overrides[0].get("dtend").dt.isoformat() == "2026-05-23T17:00:00+08:00"
+    assert overrides[0].get("recurrence-id").dt.isoformat() == "2026-05-23T14:00:00+08:00"
+
+
+def test_event_recurrence_override_replaces_existing_exception(configured_env, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
+    event_input = _write_json(
+        tmp_path / "event.json",
+        {
+            "calendar": "personal",
+            "title": "Weekly review",
+            "start": "2026-05-16T14:00:00",
+            "end": "2026-05-16T16:00:00",
+            "timezone": "Asia/Shanghai",
+            "recurrence": {"frequency": "weekly", "count": 3, "by_day": ["SA"]},
+        },
+    )
+    main(["event", "create", "--json-input", str(event_input), "--confirm"])
+    created = json.loads(capsys.readouterr().out)
+    first_input = _write_json(tmp_path / "first.json", {"start": "2026-05-23T15:00:00", "end": "2026-05-23T17:00:00"})
+    second_input = _write_json(tmp_path / "second.json", {"start": "2026-05-23T18:00:00", "end": "2026-05-23T19:00:00"})
+
+    main(["event", "recurrence", "override", "--uid", created["uid"], "--occurrence-date", "2026-05-23", "--json-input", str(first_input), "--confirm"])
+    json.loads(capsys.readouterr().out)
+    code = main(["event", "recurrence", "override", "--uid", created["uid"], "--occurrence-date", "2026-05-23", "--json-input", str(second_input), "--confirm"])
+    output = json.loads(capsys.readouterr().out)
+    calendar = Calendar.from_ical(next(configured_env["events"].glob("*.ics")).read_bytes())
+    overrides = [event for event in calendar.walk("VEVENT") if event.get("recurrence-id") is not None]
+
+    assert code == 0
+    assert output["ok"] is True
+    assert len(overrides) == 1
+    assert overrides[0].get("dtstart").dt.isoformat() == "2026-05-23T18:00:00+08:00"
+
+
 def test_task_recurrence_trim_keeps_occurrences_before_date(configured_env, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "run_sync", lambda: {"returncode": 0, "stdout": "", "stderr": ""})
     task_input = _write_json(

@@ -24,12 +24,13 @@ This branch is an MVP focused on non-interactive automation:
 - direct CalDAV create/list/get/done flows through `python-caldav`
 - UID-based update/delete for events and tasks
 - structured recurrence (`RRULE`) and reminders (`VALARM`)
+- one-off event overrides for recurring series (`RECURRENCE-ID`)
 - remote collection discovery and classification
 - legacy local vdir read/write still available with `backend = "vdir"`
 - tests that use temporary local vdirs or mocks and do not require a real Nextcloud server
 
-Attendees, exceptions to recurring series, and full provider config generation
-are intentionally out of scope for this MVP.
+Attendees, recurring task exceptions, and full provider config generation are
+intentionally out of scope for this MVP.
 
 ## Nix Contract
 
@@ -249,6 +250,8 @@ caldav-calendar event delete --uid UID --dry-run
 caldav-calendar event delete --uid UID --confirm
 caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --dry-run
 caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --confirm
+caldav-calendar event recurrence override --uid UID --occurrence-date 2026-05-23 --json-input examples/event-override.json --dry-run
+caldav-calendar event recurrence override --uid UID --occurrence-date 2026-05-23 --json-input examples/event-override.json --confirm
 ```
 
 Event input:
@@ -286,6 +289,11 @@ that date and after it while keeping earlier instances. For example, a weekly
 event on May 16, 23, and 30 trimmed with `--before-date 2026-05-30` keeps May
 16 and May 23. Use `event delete --uid UID` to delete the entire recurring
 series.
+
+Use `event recurrence override --occurrence-date YYYY-MM-DD` to change one
+instance in a recurring series. The override JSON must include the new `start`
+and `end`; it may also include `title`, `location`, `description`, `tags`, and
+`reminders`. The CLI writes a same-UID exception event with `RECURRENCE-ID`.
 
 ### Tasks
 

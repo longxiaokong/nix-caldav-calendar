@@ -161,6 +161,7 @@ Dry-run update/delete by UID:
 caldav-calendar event update --uid UID --json-input examples/event-update.json --dry-run
 caldav-calendar event delete --uid UID --dry-run
 caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --dry-run
+caldav-calendar event recurrence override --uid UID --occurrence-date 2026-05-23 --json-input examples/event-override.json --dry-run
 ```
 
 Confirmed update/delete by UID:
@@ -169,6 +170,7 @@ Confirmed update/delete by UID:
 caldav-calendar event update --uid UID --json-input examples/event-update.json --confirm
 caldav-calendar event delete --uid UID --confirm
 caldav-calendar event recurrence trim --uid UID --before-date 2026-05-30 --confirm
+caldav-calendar event recurrence override --uid UID --occurrence-date 2026-05-23 --json-input examples/event-override.json --confirm
 ```
 
 Event input:
@@ -203,6 +205,10 @@ Set `"recurrence": null` in update JSON to remove an existing repeat rule. Set
 Use `event recurrence trim --before-date YYYY-MM-DD` to delete instances on
 that date and after it while keeping earlier instances. Use `event delete --uid`
 to delete the entire recurring series.
+Use `event recurrence override --occurrence-date YYYY-MM-DD` to change one
+instance in a recurring series. The override JSON must include the new `start`
+and `end`; it may also include `title`, `location`, `description`, `tags`, and
+`reminders`.
 
 ## Tasks
 
